@@ -67,6 +67,7 @@ type chatRecordingSession struct {
 	lastSaveTime time.Time
 	mu           sync.Mutex
 	isRunning    bool // Add a flag to track if the session is running
+	retryCount   int
 }
 
 // NewChatRecorder creates a new chat recorder service
@@ -254,14 +255,26 @@ func (cr *ChatRecorder) recordChat(session *chatRecordingSession) {
 
 			// If the session should still be running, restart the websocket connection
 			if isRunning {
-				cr.logger.Printf("Attempting to reconnect after panic for %s", session.username)
-				time.Sleep(cr.reconnectWait) // Wait before reconnecting
+				session.mu.Lock()
+				session.retryCount++
+				shouldRetry := session.retryCount <= cr.maxRetries
+				session.mu.Unlock()
 
-				// Increment the WaitGroup before starting a new goroutine
-				session.wg.Add(1)
+				if shouldRetry {
+					cr.logger.Printf("Attempting to reconnect after panic for %s (attempt %d/%d)", session.username, session.retryCount, cr.maxRetries)
+					time.Sleep(cr.reconnectWait) // Wait before reconnecting
 
-				// Start a new goroutine
-				go cr.recordChat(session)
+					// Increment the WaitGroup before starting a new goroutine
+					session.wg.Add(1)
+
+					// Start a new goroutine
+					go cr.recordChat(session)
+				} else {
+					cr.logger.Printf("Session for %s reached max retries after panic, marking as not running", session.username)
+					session.mu.Lock()
+					session.isRunning = false
+					session.mu.Unlock()
+				}
 			} else {
 				cr.logger.Printf("Session for %s marked as not running, not reconnecting after panic", session.username)
 			}

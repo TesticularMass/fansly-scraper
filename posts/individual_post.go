@@ -235,37 +235,39 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 		url := fmt.Sprintf("https://apiv3.fansly.com/api/v1/account/media?ids=%s&ngsw-bypass=true", strings.Join(batch, ","))
 		logger.Logger.Printf("[INFO] Fetching details for %d bundled media items (batch %d/%d)", len(batch), (i/batchSize)+1, (len(uniqueIDs)/batchSize)+1)
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			logger.Logger.Printf("[WARN] Failed to create request for media batch: %v", err)
-			continue // Skip to the next batch
-		}
-		fanslyHeaders.AddHeadersToRequest(req, true)
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			logger.Logger.Printf("[WARN] Failed to execute request for media batch: %v", err)
-			continue // Skip to the next batch
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			logger.Logger.Printf("[WARN] Failed to fetch media by IDs with status code %d for batch", resp.StatusCode)
-			continue // Skip to the next batch
-		}
-
-		var mediaResp AccountMediaResponse
-		if err := json.NewDecoder(resp.Body).Decode(&mediaResp); err != nil {
-			logger.Logger.Printf("[WARN] Failed to decode media response for batch: %v", err)
-			continue // Skip to the next batch
-		}
-		if !mediaResp.Success {
-			logger.Logger.Printf("[WARN] API reported failure when fetching media by IDs for batch")
-			continue // Skip to the next batch
-		}
-
-		allFetchedMedia = append(allFetchedMedia, mediaResp.Response...)
+		func() {
+			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+			if err != nil {
+				logger.Logger.Printf("[WARN] Failed to create request for media batch: %v", err)
+				return
+			}
+			fanslyHeaders.AddHeadersToRequest(req, true)
+	
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				logger.Logger.Printf("[WARN] Failed to execute request for media batch: %v", err)
+				return
+			}
+			defer resp.Body.Close()
+	
+			if resp.StatusCode != http.StatusOK {
+				logger.Logger.Printf("[WARN] Failed to fetch media by IDs with status code %d for batch", resp.StatusCode)
+				return
+			}
+	
+			var mediaResp AccountMediaResponse
+			if err := json.NewDecoder(resp.Body).Decode(&mediaResp); err != nil {
+				logger.Logger.Printf("[WARN] Failed to decode media response for batch: %v", err)
+				return
+			}
+			if !mediaResp.Success {
+				logger.Logger.Printf("[WARN] API reported failure when fetching media by IDs for batch")
+				return
+			}
+	
+			allFetchedMedia = append(allFetchedMedia, mediaResp.Response...)
+		}()
 	}
 
 	if len(allFetchedMedia) != len(uniqueIDs) {

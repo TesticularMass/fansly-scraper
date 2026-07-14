@@ -288,7 +288,7 @@ func getFollowedAccountIDs(userId string, fanslyHeaders *headers.FanslyHeaders) 
 			}
 
 			// If we get rate limited, wait and retry
-			if resp.StatusCode == 429 {
+			if resp.StatusCode == http.StatusTooManyRequests {
 				resp.Body.Close()
 				waitTime := retryDelay * time.Duration(1<<uint(retry))
 				logger.Logger.Printf("Rate limited (429) when fetching following list, retrying in %v", waitTime)
@@ -381,7 +381,7 @@ func GetAccountDetails(accountIDs []string, fanslyHeaders *headers.FanslyHeaders
 			}
 
 			// If we get rate limited, wait and retry
-			if resp.StatusCode == 429 {
+			if resp.StatusCode == http.StatusTooManyRequests {
 				resp.Body.Close()
 				waitTime := retryDelay * time.Duration(1<<uint(retry))
 				logger.Logger.Printf("Rate limited (429) when fetching models information, retrying in %v", waitTime)

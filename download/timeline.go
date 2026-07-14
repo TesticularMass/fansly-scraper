@@ -199,24 +199,25 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 			shouldSkipFiles := d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(post.ID)
 
 			if !shouldSkipFiles {
-				semaphore <- struct{}{}
-				// We only fetch media and download if we aren't skipping
-				accountMediaItems, err := posts.GetPostMedia(post.ID, d.headers)
-				if err != nil {
-					logger.Logger.Printf("[ERROR] [%s] Failed to fetch media for post %s: %v", modelName, post.ID, err)
-					d.progressBar.Add(1)
-					<-semaphore
-					return
-				}
-
-				for i, accountMedia := range accountMediaItems {
-					err = d.DownloadMediaItem(ctx, accountMedia, baseDir, modelName, post, i)
+				func() {
+					semaphore <- struct{}{}
+					defer func() { <-semaphore }()
+					
+					// We only fetch media and download if we aren't skipping
+					accountMediaItems, err := posts.GetPostMedia(post.ID, d.headers)
 					if err != nil {
-						logger.Logger.Printf("[ERROR] [%s] Failed to download media item %s: %v", modelName, accountMedia.ID, err)
-						continue
+						logger.Logger.Printf("[ERROR] [%s] Failed to fetch media for post %s: %v", modelName, post.ID, err)
+						return
 					}
-				}
-				<-semaphore
+	
+					for i, accountMedia := range accountMediaItems {
+						err = d.DownloadMediaItem(ctx, accountMedia, baseDir, modelName, post, i)
+						if err != nil {
+							logger.Logger.Printf("[ERROR] [%s] Failed to download media item %s: %v", modelName, accountMedia.ID, err)
+							continue
+						}
+					}
+				}()
 			} else {
 				logger.Logger.Printf("[INFO] [%s] Skipping files for post %s, but updating metadata", modelName, post.ID)
 			}
@@ -717,12 +718,12 @@ func (d *Downloader) downloadWithRetry(url string) (*http.Response, error) {
 		}
 
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-			resp.Body.Close()
-			return nil, fmt.Errorf("access denied (HTTP %d): account may lack the required subscription tier", resp.StatusCode)
+			logger.Logger.Printf("Access denied (HTTP %d). This could be a rate limit or missing subscription tier. Retrying...", resp.StatusCode)
+		} else {
+			logger.Logger.Printf("Download failed with status %d, retrying...", resp.StatusCode)
 		}
-
+		
 		resp.Body.Close()
-		logger.Logger.Printf("Download failed with status %d, retrying...", resp.StatusCode)
 
 		time.Sleep(backoff)
 		backoff *= 2

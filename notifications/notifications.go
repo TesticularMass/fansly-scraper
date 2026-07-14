@@ -197,7 +197,10 @@ func (ns *NotificationService) sendDiscordNotification(message, username, modelI
 	writer.Close()
 
 	// Send the multipart request
-	req, _ := http.NewRequest("POST", ns.config.Notifications.DiscordWebhook, body)
+	req, err := http.NewRequest("POST", ns.config.Notifications.DiscordWebhook, body)
+	if err != nil {
+		return fmt.Errorf("failed to create discord request: %w", err)
+	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	client := &http.Client{}
@@ -237,7 +240,11 @@ func (ns *NotificationService) sendTelegramNotification(message string, thumbnai
 		_, _ = io.Copy(part, file)
 		writer.Close()
 
-		req, _ := http.NewRequest("POST", url, body)
+		req, err := http.NewRequest("POST", url, body)
+		if err != nil {
+			logger.Logger.Printf("Failed to create telegram request: %v", err)
+			return
+		}
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 
 		client := &http.Client{}

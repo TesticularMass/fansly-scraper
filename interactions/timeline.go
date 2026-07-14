@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/agnosto/fansly-scraper/config"
@@ -82,7 +83,7 @@ func processAllPosts(ctx context.Context, allPosts []posts.Post, configPath, url
 			if err != nil {
 				if retries < maxRetries-1 {
 					// Check if it's a rate limit error
-					if err.Error() == "request failed with status code 429" {
+					if strings.Contains(err.Error(), "status code 429") {
 						consecutiveFailures++
 						// Exponential backoff
 						waitTime := backoffDuration * time.Duration(consecutiveFailures)

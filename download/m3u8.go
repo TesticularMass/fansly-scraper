@@ -41,6 +41,9 @@ func GetM3U8Cookies(m3u8URL string) map[string]string {
 func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL string, savePath string, postID string, frameRate float64, isDiagnosis bool) error {
 	fileType := "video"
 
+	if d.m3u8Semaphore == nil {
+		d.m3u8Semaphore = semaphore.NewWeighted(2)
+	}
 	if err := d.m3u8Semaphore.Acquire(ctx, 1); err != nil {
 		return err
 	}

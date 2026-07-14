@@ -249,10 +249,13 @@ func (ns *NotificationService) sendTelegramNotification(message string, thumbnai
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
-		if err != nil || resp.StatusCode >= 300 {
-			logger.Logger.Printf("Failed to send Telegram photo notification. Status: %v, Err: %v", resp.Status, err)
-		} else {
-			resp.Body.Close()
+		if err != nil {
+			logger.Logger.Printf("Failed to send Telegram photo notification: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			logger.Logger.Printf("Telegram photo notification returned status: %s", resp.Status)
 		}
 		return
 	}

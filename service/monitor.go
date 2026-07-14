@@ -5,7 +5,6 @@ import (
 	"fmt"
 	//"maps"
 	"strconv"
-	"syscall"
 
 	"log"
 
@@ -787,24 +786,5 @@ func (ms *MonitoringService) isLockStale(lockFile string) bool {
 		return true // Invalid content, assume stale
 	}
 
-	return !isProcessRunning(pid)
-}
-
-func isProcessRunning(pid int) bool {
-	if runtime.GOOS == "windows" {
-		process, err := os.FindProcess(pid)
-		if err != nil {
-			return false
-		}
-		// On Windows, FindProcess always succeeds, so we need to try to get exit code
-		processState, err := process.Wait()
-		return err == nil && !processState.Exited()
-	}
-	// Unix-like systems (Linux, macOS)
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
+	return !utils.IsProcessRunning(pid)
 }

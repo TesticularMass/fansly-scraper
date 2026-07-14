@@ -427,22 +427,38 @@ func (cr *ChatRecorder) handleMessages(session *chatRecordingSession) error {
 	saveTicker := time.NewTicker(session.saveInterval)
 	defer saveTicker.Stop()
 
-	// Set a reasonable read deadline for the first message
-	session.conn.SetReadDeadline(time.Now().Add(45 * time.Second))
+	// Read in a dedicated goroutine with no read deadline: a deadline timeout
+	// permanently corrupts a gorilla/websocket connection, so the connection
+	// is kept alive via pings and closed on stop to unblock the reader.
+	type readResult struct {
+		messageType int
+		data        []byte
+		err         error
+	}
+	conn := session.conn
+	readCh := make(chan readResult)
+	readerDone := make(chan struct{})
+	defer close(readerDone)
+
+	go func() {
+		for {
+			messageType, message, err := conn.ReadMessage()
+			select {
+			case readCh <- readResult{messageType, message, err}:
+			case <-readerDone:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 
 	for {
-		// Check if the session is still running
-		session.mu.Lock()
-		isRunning := session.isRunning
-		session.mu.Unlock()
-
-		if !isRunning {
-			return nil // Exit normally if session is stopped
-		}
-
 		select {
 		case <-session.stopChan:
 			cr.logger.Printf("Received stop signal for %s", session.username)
+			conn.Close() // Unblock the reader goroutine
 			return nil
 
 		case <-pingTicker.C:
@@ -461,37 +477,28 @@ func (cr *ChatRecorder) handleMessages(session *chatRecordingSession) error {
 
 		case <-saveTicker.C:
 			// Save messages periodically
-			if len(session.messages) > 0 {
+			session.mu.Lock()
+			pending := len(session.messages)
+			session.mu.Unlock()
+			if pending > 0 {
 				cr.logger.Printf("Periodic save triggered for %s (%d messages)",
-					session.username, len(session.messages))
+					session.username, pending)
 				if err := cr.saveMessages(session); err != nil {
 					cr.logger.Printf("Error saving chat messages: %v", err)
 				}
 			}
 
-		default:
-			// Read the next message with a reasonable timeout
-			session.conn.SetReadDeadline(time.Now().Add(45 * time.Second))
-			messageType, message, err := session.conn.ReadMessage()
-			session.conn.SetReadDeadline(time.Time{}) // Reset the deadline after read
-
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+		case res := <-readCh:
+			if res.err != nil {
+				if websocket.IsCloseError(res.err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					return fmt.Errorf("websocket closed normally")
 				}
-
-				// Check if it's a timeout (which is expected with our approach)
-				if strings.Contains(err.Error(), "timeout") {
-					// This is just a timeout from our deadline, not a real error
-					continue
-				}
-
-				return fmt.Errorf("error reading message: %v", err)
+				return fmt.Errorf("error reading message: %v", res.err)
 			}
 
 			// Only process text messages
-			if messageType != websocket.TextMessage {
-				cr.logger.Printf("Received non-text message type: %d", messageType)
+			if res.messageType != websocket.TextMessage {
+				cr.logger.Printf("Received non-text message type: %d", res.messageType)
 				continue
 			}
 
@@ -500,7 +507,7 @@ func (cr *ChatRecorder) handleMessages(session *chatRecordingSession) error {
 				Type int             `json:"t"`
 				Data json.RawMessage `json:"d"`
 			}
-			if err := json.Unmarshal(message, &msg); err != nil {
+			if err := json.Unmarshal(res.data, &msg); err != nil {
 				cr.logger.Printf("Error unmarshaling message: %v", err)
 				continue
 			}

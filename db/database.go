@@ -49,11 +49,12 @@ func NewDatabase(saveLocation string) (*Database, error) {
 		if err := migrateOldSchema(db); err != nil {
 			return nil, fmt.Errorf("failed to migrate old schema: %w", err)
 		}
-	} else {
-		// Run normal migrations for new database
-		if err := db.AutoMigrate(&models.File{}, &models.ProcessedPost{}); err != nil {
-			return nil, fmt.Errorf("failed to run migrations: %w", err)
-		}
+	}
+
+	// Always run AutoMigrate: the old-schema migration only rebuilds the files
+	// table and leaves out columns/tables added later (post_id, processed_posts).
+	if err := db.AutoMigrate(&models.File{}, &models.ProcessedPost{}); err != nil {
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return &Database{DB: db}, nil

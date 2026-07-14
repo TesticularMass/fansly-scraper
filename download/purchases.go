@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/agnosto/fansly-scraper/auth"
@@ -111,9 +110,6 @@ func (d *Downloader) DownloadPurchasedContent(ctx context.Context) error {
 	)
 
 	// Download in stable order
-	var mu sync.Mutex
-	_ = mu // retained in case callers extend this with concurrency later
-
 	for _, accountID := range accountOrder {
 		accountInfo := accountInfoMap[accountID]
 

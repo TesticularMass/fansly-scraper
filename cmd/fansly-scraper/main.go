@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/agnosto/fansly-scraper/auth"
 	"github.com/agnosto/fansly-scraper/cmd"
@@ -14,6 +13,7 @@ import (
 	"github.com/agnosto/fansly-scraper/service"
 	"github.com/agnosto/fansly-scraper/ui"
 	"github.com/agnosto/fansly-scraper/updater"
+	"github.com/agnosto/fansly-scraper/utils"
 
 	//ksvc "github.com/kardianos/service"
 
@@ -314,32 +314,13 @@ func runCLIMode(username string, downloadType string, downloader *download.Downl
 	}
 }
 
-func isProcessRunning(pid int) bool {
-	if runtime.GOOS == "windows" {
-		process, err := os.FindProcess(pid)
-		if err != nil {
-			return false
-		}
-		// On Windows, FindProcess always succeeds, so we need to try to get exit code
-		processState, err := process.Wait()
-		return err == nil && !processState.Exited()
-	}
-	// Unix-like systems (Linux, macOS)
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
-}
-
 func startMonitoring() {
 	pidFile := filepath.Join(config.GetConfigDir(), "monitor.pid")
 
 	// Check existing process
 	if data, err := os.ReadFile(pidFile); err == nil {
 		pid, err := strconv.Atoi(string(data))
-		if err == nil && isProcessRunning(pid) {
+		if err == nil && utils.IsProcessRunning(pid) {
 			fmt.Println("Monitoring process is already running.")
 			return
 		}

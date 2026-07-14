@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/agnosto/fansly-scraper/config"
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 type FanslyHeaders struct {
@@ -78,7 +79,9 @@ func NewFanslyHeaders(cfg *config.Config) (*FanslyHeaders, error) {
 
 	if time.Since(cfg.SecurityHeaders.LastUpdated) > 7*24*time.Hour {
 		if err := headers.RefreshSecurityHeaders(); err != nil {
-			return nil, err
+			// The cached headers may still work; don't make a failed
+			// refresh (e.g. temporary network issue) fatal.
+			fmt.Printf("Warning: failed to refresh security headers, using cached values: %v\n", err)
 		}
 	}
 
@@ -140,8 +143,10 @@ func (f *FanslyHeaders) SetCheckKey() error {
 }
 
 func (f *FanslyHeaders) getFanslyClientCheck(reqURL string) string {
-	parsedURL, _ := url.Parse(reqURL)
-	urlPath := parsedURL.Path
+	var urlPath string
+	if parsedURL, err := url.Parse(reqURL); err == nil {
+		urlPath = parsedURL.Path
+	}
 	uniqueIdentifier := fmt.Sprintf("%s_%s_%s", f.CheckKey, urlPath, f.DeviceID)
 	digest := cyrb53(uniqueIdentifier)
 	return fmt.Sprintf("%x", digest)
@@ -164,13 +169,12 @@ func cyrb53(str string) uint64 {
 }
 
 func GetDeviceID() (string, error) {
-	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://apiv3.fansly.com/api/v1/device/id", nil)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := utils.HTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -203,7 +207,8 @@ func (f *FanslyHeaders) SetSessionID() error {
 }
 
 func GetSessionID(authToken string) (string, error) {
-	c, _, err := websocket.DefaultDialer.Dial("wss://wsv3.fansly.com/", nil)
+	dialer := websocket.Dialer{HandshakeTimeout: 30 * time.Second}
+	c, _, err := dialer.Dial("wss://wsv3.fansly.com/", nil)
 	if err != nil {
 		return "", err
 	}
@@ -214,11 +219,14 @@ func GetSessionID(authToken string) (string, error) {
 		"d": fmt.Sprintf("{\"token\":\"%s\"}", authToken),
 	}
 
+	// One-shot connection: bound the exchange so startup can't hang.
+	c.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	err = c.WriteJSON(message)
 	if err != nil {
 		return "", err
 	}
 
+	c.SetReadDeadline(time.Now().Add(30 * time.Second))
 	_, msg, err := c.ReadMessage()
 	if err != nil {
 		return "", err
@@ -250,7 +258,7 @@ func GetSessionID(authToken string) (string, error) {
 
 func GuessCheckKey(mainJSPattern, checkKeyPattern, userAgent string) (string, error) {
 	fanslyURL := "https://fansly.com/"
-	client := &http.Client{}
+	client := utils.HTTPClient
 
 	// Make request to fansly.com
 	req, err := http.NewRequest("GET", fanslyURL, nil)

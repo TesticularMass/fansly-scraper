@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	//"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 const (
@@ -59,7 +60,7 @@ func CheckForUpdate(currentVersion string) error {
 }
 
 func getLatestRelease() (*GithubRelease, error) {
-	resp, err := http.Get(githubAPIURL)
+	resp, err := utils.HTTPClient.Get(githubAPIURL)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func updateBinary(release *GithubRelease) error {
 	}
 
 	fmt.Println("Downloading new version...")
-	resp, err := http.Get(downloadURL)
+	resp, err := utils.HTTPClient.Get(downloadURL)
 	if err != nil {
 		return err
 	}
@@ -208,7 +209,12 @@ func extractUpdate(archivePath, destPath string) error {
 			return err
 		}
 
-		target := filepath.Join(destPath, header.Name)
+		// Guard against path traversal (zip-slip) from a malicious archive.
+		cleanName := filepath.Clean(header.Name)
+		if filepath.IsAbs(cleanName) || strings.HasPrefix(cleanName, "..") {
+			return fmt.Errorf("archive contains invalid path: %s", header.Name)
+		}
+		target := filepath.Join(destPath, cleanName)
 
 		switch header.Typeflag {
 		case tar.TypeDir:

@@ -10,6 +10,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 var (
@@ -121,7 +122,7 @@ type SubscriptionsResponse struct {
 // Login retrieves the user's account information using the provided headers.
 func Login(fanslyHeaders *headers.FanslyHeaders) (*AccountInfo, error) {
 	// Create a new HTTP client
-	client := &http.Client{}
+	client := utils.HTTPClient
 	// Create a new HTTP request
 	req, err := http.NewRequest("GET", "https://apiv3.fansly.com/api/v1/account/me?ngsw-bypass=true", nil)
 	if err != nil {
@@ -169,7 +170,7 @@ func GetMyUserID() (string, error) {
 }
 
 func GetSubscriptions(fanslyHeaders *headers.FanslyHeaders) ([]string, error) {
-	client := &http.Client{}
+	client := utils.HTTPClient
 
 	req, err := http.NewRequest("GET", "https://apiv3.fansly.com/api/v1/subscriptions?ngsw-bypass=true", nil)
 	if err != nil {
@@ -256,7 +257,7 @@ func GetFollowedUsers(userId string, fanslyHeaders *headers.FanslyHeaders) ([]Fo
 }
 
 func getFollowedAccountIDs(userId string, fanslyHeaders *headers.FanslyHeaders) ([]string, error) {
-	client := &http.Client{}
+	client := utils.HTTPClient
 	var allAccountIDs []string
 	offset := 0
 	batchSize := 100
@@ -346,7 +347,7 @@ func getFollowedAccountIDs(userId string, fanslyHeaders *headers.FanslyHeaders) 
 
 // GetAccountDetails retrieves account information for a list of account IDs.
 func GetAccountDetails(accountIDs []string, fanslyHeaders *headers.FanslyHeaders) ([]FollowedModel, error) {
-	client := &http.Client{}
+	client := utils.HTTPClient
 	var allModels []FollowedModel
 	batchSize := 50 // Even smaller batch size for fetching account details
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"golang.org/x/time/rate"
 	"net/http"
 	"time"
@@ -49,7 +50,7 @@ func GetModelStories(accountID string, fanslyHeaders *headers.FanslyHeaders) ([]
 
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error sending request: %v", err)

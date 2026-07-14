@@ -3,7 +3,6 @@ package download
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,6 +27,7 @@ import (
 	"github.com/agnosto/fansly-scraper/db/service"
 	"github.com/agnosto/fansly-scraper/logger"
 	"github.com/agnosto/fansly-scraper/posts"
+	"github.com/agnosto/fansly-scraper/utils"
 
 	"github.com/agnosto/fansly-scraper/headers"
 )
@@ -42,7 +42,7 @@ type logWriter struct {
 }
 
 type Downloader struct {
-	db                   *sql.DB
+	database             *db.Database
 	saveLocation         string
 	authToken            string
 	userAgent            string
@@ -114,6 +114,7 @@ func NewDownloader(cfg *config.Config, ffmpegAvailable bool) (*Downloader, error
 	)
 
 	return &Downloader{
+		database:             database,
 		fileService:          fileService,
 		ProcessedPostService: processedPostService,
 		authToken:            cfg.Account.AuthToken,
@@ -198,22 +199,25 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 
 			shouldSkipFiles := d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(post.ID)
 
+			downloadFailed := false
 			if !shouldSkipFiles {
 				func() {
 					semaphore <- struct{}{}
 					defer func() { <-semaphore }()
-					
+
 					// We only fetch media and download if we aren't skipping
 					accountMediaItems, err := posts.GetPostMedia(post.ID, d.headers)
 					if err != nil {
 						logger.Logger.Printf("[ERROR] [%s] Failed to fetch media for post %s: %v", modelName, post.ID, err)
+						downloadFailed = true
 						return
 					}
-	
+
 					for i, accountMedia := range accountMediaItems {
 						err = d.DownloadMediaItem(ctx, accountMedia, baseDir, modelName, post, i)
 						if err != nil {
 							logger.Logger.Printf("[ERROR] [%s] Failed to download media item %s: %v", modelName, accountMedia.ID, err)
+							downloadFailed = true
 							continue
 						}
 					}
@@ -222,10 +226,15 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 				logger.Logger.Printf("[INFO] [%s] Skipping files for post %s, but updating metadata", modelName, post.ID)
 			}
 
-			// always save/update metadata
-			err := d.ProcessedPostService.MarkPostAsProcessed(post.ID, modelName, post.Content, post.CreatedAt)
-			if err != nil {
-				logger.Logger.Printf("[ERROR] [%s] Failed to save post metadata %s: %v", modelName, post.ID, err)
+			// Only mark the post processed when nothing failed, so failed
+			// posts are retried on the next run instead of skipped forever.
+			if downloadFailed {
+				logger.Logger.Printf("[WARN] [%s] Post %s had failures, leaving unmarked for retry", modelName, post.ID)
+			} else {
+				err := d.ProcessedPostService.MarkPostAsProcessed(post.ID, modelName, post.Content, post.CreatedAt)
+				if err != nil {
+					logger.Logger.Printf("[ERROR] [%s] Failed to save post metadata %s: %v", modelName, post.ID, err)
+				}
 			}
 
 			d.progressBar.Add(1)
@@ -292,8 +301,9 @@ func (d *Downloader) resolveUniqueFilePath(dir, filename, ext string) string {
 	// If it doesn't exist in DB and doesn't exist on disk, it's safe.
 	if !d.fileExists(full) {
 		if _, err := os.Stat(full); os.IsNotExist(err) {
-			// Reserve the file immediately with a 0-byte placeholder
-			// so concurrent goroutines instantly see it's taken
+			// Mark active before creating the 0-byte placeholder so a
+			// concurrent goroutine can't adopt the empty file into the DB.
+			activeDownloads.Store(full, true)
 			f, _ := os.OpenFile(full, os.O_RDONLY|os.O_CREATE, 0666)
 			if f != nil {
 				f.Close()
@@ -309,7 +319,7 @@ func (d *Downloader) resolveUniqueFilePath(dir, filename, ext string) string {
 
 		if !d.fileExists(fullCandidate) {
 			if _, err := os.Stat(fullCandidate); os.IsNotExist(err) {
-				// Reserve the file immediately
+				activeDownloads.Store(fullCandidate, true)
 				f, _ := os.OpenFile(fullCandidate, os.O_RDONLY|os.O_CREATE, 0666)
 				if f != nil {
 					f.Close()
@@ -675,30 +685,37 @@ func (d *Downloader) downloadSingleItem(ctx context.Context, item posts.MediaIte
 		return err
 	}
 
-	err = d.downloadRegularFile(mediaUrl, filePath, modelName, fileType, sourceID, isDiagnosis)
+	err = d.downloadRegularFile(ctx, mediaUrl, filePath, modelName, fileType, sourceID, isDiagnosis)
 	if err != nil {
 		os.Remove(filePath) // Clean up the 0-byte file if download fails
 	}
 	return err
 }
 
-func (d *Downloader) downloadWithRetry(url string) (*http.Response, error) {
+func (d *Downloader) downloadWithRetry(ctx context.Context, url string) (*http.Response, error) {
 	backoff := time.Second
 	maxRetries := 3
+	var lastErr error
 
-	for range maxRetries {
-		//log.Printf("[dlWithRetry] Download attempt: %v", i)
-		if err := d.limiter.Wait(context.Background()); err != nil {
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			backoff *= 2
+		}
+
+		if err := d.limiter.Wait(ctx); err != nil {
 			return nil, fmt.Errorf("rate limiter wait error: %v", err)
 		}
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error creating request: %v", err)
 		}
 
-		//req.Header.Add("Authorization", d.authToken)
-		//req.Header.Add("User-Agent", d.userAgent)
 		d.headers.AddHeadersToRequest(req, true)
 
 		if strings.HasSuffix(url, ".m3u8") {
@@ -707,9 +724,10 @@ func (d *Downloader) downloadWithRetry(url string) (*http.Response, error) {
 			req.Header.Add("Referer", "https://fansly.com/")
 		}
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := utils.HTTPClient.Do(req)
 		if err != nil {
+			lastErr = err
+			logger.Logger.Printf("Download attempt %d failed: %v", attempt+1, err)
 			continue
 		}
 
@@ -722,22 +740,16 @@ func (d *Downloader) downloadWithRetry(url string) (*http.Response, error) {
 		} else {
 			logger.Logger.Printf("Download failed with status %d, retrying...", resp.StatusCode)
 		}
-		
-		resp.Body.Close()
 
-		time.Sleep(backoff)
-		backoff *= 2
+		lastErr = fmt.Errorf("status %d", resp.StatusCode)
+		resp.Body.Close()
 	}
 
-	return nil, fmt.Errorf("failed to download %s after %d retries", url, maxRetries)
+	return nil, fmt.Errorf("failed to download %s after %d retries: %v", url, maxRetries, lastErr)
 }
 
-func (d *Downloader) downloadRegularFile(url, filePath string, modelName string, fileType, postID string, isDiagnosis bool) error {
-	if err := d.limiter.Wait(context.Background()); err != nil {
-		return fmt.Errorf("rate limiter wait error: %v", err)
-	}
-
-	resp, err := d.downloadWithRetry(url)
+func (d *Downloader) downloadRegularFile(ctx context.Context, url, filePath string, modelName string, fileType, postID string, isDiagnosis bool) error {
+	resp, err := d.downloadWithRetry(ctx, url)
 	if err != nil {
 		return err
 	}
@@ -800,5 +812,8 @@ func (d *Downloader) hashExistingFile(filePath string) (string, error) {
 }
 
 func (d *Downloader) Close() error {
-	return d.db.Close()
+	if d.database == nil {
+		return nil
+	}
+	return d.database.Close()
 }

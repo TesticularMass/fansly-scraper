@@ -69,11 +69,19 @@ func (d *Downloader) DownloadPostByID(ctx context.Context, postIdentifier string
 	}
 
 	logger.Logger.Printf("Found %d media items to download for post %s.", len(accountMediaItems), postID)
+	downloadFailed := false
 	for i, media := range accountMediaItems {
 		err := d.DownloadMediaItem(ctx, media, baseDir, modelName, postForDownloader, i)
 		if err != nil {
 			logger.Logger.Printf("[ERROR] Failed to download media item %s: %v", media.ID, err)
+			downloadFailed = true
 		}
+	}
+
+	// Leave failed posts unmarked so they are retried on the next run.
+	if downloadFailed {
+		logger.Logger.Printf("[WARN] Post %s had failures, leaving unmarked for retry", postInfo.ID)
+		return fmt.Errorf("one or more media items failed for post %s", postInfo.ID)
 	}
 
 	d.ProcessedPostService.MarkPostAsProcessed(postInfo.ID, modelName, postInfo.Content, postInfo.CreatedAt)

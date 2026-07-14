@@ -11,6 +11,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"golang.org/x/time/rate"
 )
 
@@ -104,7 +105,7 @@ func GetFullPostDetails(postId string, fanslyHeaders *headers.FanslyHeaders) (*P
 	}
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err
@@ -243,7 +244,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 			}
 			fanslyHeaders.AddHeadersToRequest(req, true)
 	
-			client := &http.Client{}
+			client := utils.HTTPClient
 			resp, err := client.Do(req)
 			if err != nil {
 				logger.Logger.Printf("[WARN] Failed to execute request for media batch: %v", err)

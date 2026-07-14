@@ -7,6 +7,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/headers"
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 type StreamResponse struct {
@@ -43,7 +44,7 @@ func CheckIfModelIsLive(modelID string) (bool, string, error) {
 	// Use the headers package to add headers
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, "", fmt.Errorf("failed to send request: %v", err)

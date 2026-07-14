@@ -90,6 +90,7 @@ func NewMonitoringService(storagePath string, logger *log.Logger) *MonitoringSer
 		logger:               logger,
 		isTUI:                false,
 		notificationSvc:      notifications.NewNotificationService(cfg),
+		chatRecorder:         NewChatRecorder(logger),
 		fileService:          fileService,
 		processedPostService: processedPostService,
 	}
@@ -104,8 +105,15 @@ func (ms *MonitoringService) SetTUIMode(enabled bool) {
 }
 
 func (ms *MonitoringService) StartMonitoring() {
+	ms.mu.Lock()
 	ms.loadState()
+	models := make(map[string]string, len(ms.activeMonitors))
 	for modelID, username := range ms.activeMonitors {
+		models[modelID] = username
+	}
+	ms.mu.Unlock()
+
+	for modelID, username := range models {
 		go ms.monitorModel(modelID, username)
 	}
 }
@@ -410,9 +418,6 @@ func (ms *MonitoringService) startRecording(modelID, username, playbackUrl strin
 	}
 	// Start chat recording if we have a chat room ID
 	if cfg.LiveSettings.RecordChat && streamData.ChatRoomID != "" {
-		if ms.chatRecorder == nil {
-			ms.chatRecorder = NewChatRecorder(ms.logger)
-		}
 		chatFilename := strings.TrimSuffix(recordedFilename, filepath.Ext(recordedFilename)) + "_chat.json"
 
 		// Add debug logging
@@ -435,25 +440,24 @@ func (ms *MonitoringService) startRecording(modelID, username, playbackUrl strin
 	// Log the FFmpeg command for debugging
 	ms.logger.Printf("Starting FFmpeg recording for %s with URL: %s to file: %s", username, playbackUrl, recordedFilename)
 
-	var recordingArgs []string
+	var cmdArgs []string
 	if cfg.LiveSettings.FFmpegRecordingOptions != "" {
-		// Use user-provided options
-		recordingArgs = strings.Fields(cfg.LiveSettings.FFmpegRecordingOptions)
+		// Use user-provided options (placed after -i, as before)
+		recordingArgs := strings.Fields(cfg.LiveSettings.FFmpegRecordingOptions)
 		ms.logger.Printf("Using custom FFmpeg recording options: %s", cfg.LiveSettings.FFmpegRecordingOptions)
+		cmdArgs = append([]string{"-i", playbackUrl}, recordingArgs...)
 	} else {
-		// Use hardcoded program defaults
-		recordingArgs = []string{
+		// Reconnect flags are input protocol options and must precede -i;
+		// after -i they attach to the file output and are silently ignored.
+		cmdArgs = []string{
+			"-reconnect", "1", "-reconnect_at_eof", "1",
+			"-reconnect_streamed", "1", "-reconnect_delay_max", "300",
+			"-rtmp_live", "live",
+			"-i", playbackUrl,
 			"-c", "copy",
 			"-movflags", "use_metadata_tags", "-map_metadata", "0",
-			"-timeout", "300", "-reconnect", "300", "-reconnect_at_eof", "300",
-			"-reconnect_streamed", "300", "-reconnect_delay_max", "300",
-			"-rtmp_live", "live",
 		}
 	}
-
-	// Build the full command
-	cmdArgs := []string{"-i", playbackUrl}
-	cmdArgs = append(cmdArgs, recordingArgs...)
 	cmdArgs = append(cmdArgs, recordedFilename)
 
 	// Create FFmpeg command
@@ -636,7 +640,8 @@ func (ms *MonitoringService) convertToMP4(tsFilename, mp4Filename string) error 
 func (ms *MonitoringService) generateContactSheet(mp4Filename string) error {
 	cfg, err := config.LoadConfig(config.GetConfigPath())
 	if err != nil {
-		ms.logger.Printf("Error loading config: %v", err)
+		ms.logger.Printf("Error loading config, using defaults: %v", err)
+		cfg = config.CreateDefaultConfig()
 	}
 	contactSheetFilename := strings.TrimSuffix(mp4Filename, ".mp4") + "_contact_sheet.jpg"
 
@@ -705,7 +710,9 @@ func (ms *MonitoringService) generateContactSheet(mp4Filename string) error {
 
 func (ms *MonitoringService) Run() {
 	fmt.Printf("Starting monitoring service\n")
+	ms.mu.Lock()
 	ms.loadState()
+	ms.mu.Unlock()
 	//ms.loadActiveRecordings()
 
 	ticker := time.NewTicker(2 * time.Minute)

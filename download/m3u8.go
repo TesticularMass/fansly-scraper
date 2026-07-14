@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"context"
 
@@ -73,6 +74,8 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	if err := os.MkdirAll(segmentDir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create segment directory: %w", err)
 	}
+	// Clean up segments on every exit path, not just success.
+	defer os.RemoveAll(segmentDir)
 
 	// Download segments
 	//log.Printf("Extracted segment URLs: %v", segmentURLs)
@@ -101,15 +104,6 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 		}
 	}
 
-	//if err := d.saveFileHash(modelName, hashString, outputFile, fileType); err != nil {
-	//	return fmt.Errorf("error saving hash for M3U8 file: %w", err)
-	//}
-
-	// Clean up segment files
-	for _, file := range segmentFiles {
-		os.Remove(file)
-	}
-
 	return nil
 }
 
@@ -125,8 +119,7 @@ func fetchM3U8Playlist(m3u8URL string, cookies map[string]string) (string, error
 	}
 
 	// Send the HTTP request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := utils.HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch M3U8 playlist: %w", err)
 	}
@@ -284,23 +277,38 @@ func downloadSegments(ctx context.Context, segmentURLs []string, savePath string
 
 			fileName := filepath.Join(savePath, fmt.Sprintf("segment_%d.ts", i))
 
-			err := downloadFile(ctx, segmentURL, fileName, cookies)
-			if err != nil {
-				log.Printf("Error downloading segment %d: %v", i, err)
-				errors <- err
-				return
-			}
+			// Retry each segment a few times so one transient failure
+			// doesn't fail the whole video.
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				if attempt > 0 {
+					select {
+					case <-time.After(time.Duration(attempt) * 2 * time.Second):
+					case <-ctx.Done():
+						errors <- ctx.Err()
+						return
+					}
+				}
 
-			// Verify file size
-			fileInfo, err := os.Stat(fileName)
-			if err != nil {
-				log.Printf("Error checking file size for segment %d: %v", i, err)
-				errors <- err
-				return
+				err = downloadFile(ctx, segmentURL, fileName, cookies)
+				if err != nil {
+					log.Printf("Error downloading segment %d (attempt %d): %v", i, attempt+1, err)
+					continue
+				}
+
+				fileInfo, statErr := os.Stat(fileName)
+				if statErr != nil {
+					err = statErr
+					continue
+				}
+				if fileInfo.Size() == 0 {
+					err = fmt.Errorf("segment %d has zero size", i)
+					continue
+				}
+				break
 			}
-			if fileInfo.Size() == 0 {
-				log.Printf("Warning: Segment %d has zero size", i)
-				errors <- fmt.Errorf("segment %d has zero size", i)
+			if err != nil {
+				errors <- err
 				return
 			}
 
@@ -340,19 +348,16 @@ func downloadSegments(ctx context.Context, segmentURLs []string, savePath string
 
 func downloadFile(ctx context.Context, url string, fileName string, cookies map[string]string) error {
 	logger.Logger.Printf("Downloading file: %s to %s", url, fileName)
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
 	}
-
-	req = req.WithContext(ctx)
 
 	for k, v := range cookies {
 		req.AddCookie(&http.Cookie{Name: k, Value: v})
 	}
 
-	resp, err := client.Do(req)
+	resp, err := utils.HTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -442,17 +447,7 @@ func combineSegments(segmentFiles []string, outputFile string, segmentDir string
 		return fmt.Errorf("ffmpeg error: %v", err)
 	}
 
-	// Clean up segment files
-	for _, file := range segmentFiles {
-		if err := os.Remove(file); err != nil {
-			logger.Logger.Printf("Failed to remove segment file %s: %v", file, err)
-		}
-	}
-
-	// Remove the segment directory
-	if err := os.RemoveAll(segmentDir); err != nil {
-		logger.Logger.Printf("Failed to remove segment directory %s: %v", segmentDir, err)
-	}
-
+	// Segment files and directory are cleaned up by DownloadM3U8's deferred
+	// RemoveAll of the segment directory.
 	return nil
 }

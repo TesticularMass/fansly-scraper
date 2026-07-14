@@ -10,6 +10,7 @@ import (
 	"reflect"
 
 	"github.com/BurntSushi/toml"
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 // VerifyConfigOnStartup runs all checks to ensure a valid config file exists and is updated.
@@ -374,7 +375,7 @@ func copyFile(srcPath, dstPath string) error {
 
 // downloadFile is a simple utility to download a file from a URL.
 func downloadFile(url, filePath string) error {
-	resp, err := http.Get(url)
+	resp, err := utils.HTTPClient.Get(url)
 	if err != nil {
 		return err
 	}

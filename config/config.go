@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -130,7 +131,14 @@ func GetConfigDir() string {
 	return filepath.Join(configDir, "fansly-scraper")
 }
 
+// saveMu serializes writers within this process: monitor goroutines can
+// trigger concurrent security-header refreshes that each call SaveConfig.
+var saveMu sync.Mutex
+
 func SaveConfig(cfg *Config) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
 	configPath := GetConfigPath()
 
 	// Try to load existing config to merge with
@@ -139,14 +147,25 @@ func SaveConfig(cfg *Config) error {
 		cfg = MergeConfigs(existingConfig, cfg)
 	}
 
-	file, err := os.Create(configPath)
+	// Write to a temp file and rename so a crash or concurrent reader never
+	// sees a half-written config.
+	tmpPath := configPath + ".tmp"
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	encoder := toml.NewEncoder(file)
-	return encoder.Encode(cfg)
+	if err := toml.NewEncoder(file).Encode(cfg); err != nil {
+		file.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	return os.Rename(tmpPath, configPath)
 }
 
 func LoadConfig(configPath string) (*Config, error) {
@@ -270,9 +289,11 @@ func OpenConfigInEditor(configPath string) error {
 func SanitizeFilename(filename string) string {
 	filename = strings.ReplaceAll(filename, " ", "_")
 
+	// Replace ':' before the regex pass, which would otherwise strip it.
+	filename = strings.ReplaceAll(filename, ":", "-")
+
 	filename = unsafeChars.ReplaceAllString(filename, "")
 
-	filename = strings.ReplaceAll(filename, ":", "-")
 	problematicChars := []string{"/", "\\", "?", "%", "*", "|", "\"", "<", ">"}
 	for _, char := range problematicChars {
 		filename = strings.ReplaceAll(filename, char, "_")

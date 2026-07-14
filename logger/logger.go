@@ -60,15 +60,19 @@ func rotateLogFile(logFile string) {
 			os.Rename(oldFile, newFile)
 		}
 
-		os.Rename(logFile, logFile+".1")
+		// Close before renaming: Windows refuses to rename an open file, and
+		// the old code then truncated the still-live log, losing its content.
+		if f, ok := Logger.Writer().(*os.File); ok {
+			f.Close()
+		}
 
-		// Close the current log file
-		Logger.Writer().(*os.File).Close()
+		if err := os.Rename(logFile, logFile+".1"); err != nil {
+			Logger.Printf("Error rotating log file: %v", err)
+		}
 
-		// Open a new log file
-		newFile, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		// Open a new log file (append, not truncate, in case the rename failed)
+		newFile, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			Logger.Printf("Error creating new log file: %v", err)
 			continue
 		}
 

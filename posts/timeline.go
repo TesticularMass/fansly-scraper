@@ -10,6 +10,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/time/rate"
 )
@@ -152,7 +153,7 @@ func getTimelineBatchResponse(accountID, wallID, before string, fanslyHeaders *h
 
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return TimelineResponse{}, err

@@ -9,6 +9,7 @@ import (
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 )
 
 type AccountInfo struct {
@@ -74,7 +75,7 @@ func GetModelIDFromUsername(username string) (string, error) {
 	}
 
 	AccountURL := fmt.Sprintf("https://apiv3.fansly.com/api/v1/account?usernames=%s&ngsw-bypass=true", username)
-	client := &http.Client{}
+	client := utils.HTTPClient
 	req, err := http.NewRequest("GET", AccountURL, nil)
 	if err != nil {
 		return "", err

@@ -12,6 +12,7 @@ import (
 	"github.com/agnosto/fansly-scraper/auth"
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/time/rate"
 )
@@ -104,7 +105,7 @@ func GetMessageGroupID(modelID string, fanslyHeaders *headers.FanslyHeaders) (st
 	fanslyHeaders.AddHeadersToRequest(req, true)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error sending group request: %v", err)
@@ -189,7 +190,7 @@ func getMessageBatchWithMedia(groupID, cursor string, fanslyHeaders *headers.Fan
 	}
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
@@ -251,7 +252,10 @@ func getMessageBatchWithMedia(groupID, cursor string, fanslyHeaders *headers.Fan
 		}
 
 		if len(mediaToFetch) > 0 {
-			fetchedMedia, err := GetMediaByIDs(ctx, mediaToFetch, fanslyHeaders)
+			// Use a fresh context: the batch context's 60s timeout can expire
+			// mid-fetch for large bundles (GetMediaByIDs is rate limited),
+			// silently dropping media.
+			fetchedMedia, err := GetMediaByIDs(context.Background(), mediaToFetch, fanslyHeaders)
 			if err != nil {
 				logger.Logger.Printf("[WARN] Failed to fetch some bundled media items for message %s: %v", msg.ID, err)
 			} else {
@@ -299,7 +303,7 @@ func FetchMessages(groupID, cursor string, fanslyHeaders *headers.FanslyHeaders)
 	}
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err

@@ -68,6 +68,22 @@ type chatRecordingSession struct {
 	mu           sync.Mutex
 	isRunning    bool // Add a flag to track if the session is running
 	retryCount   int
+
+	// saveMu serializes saveMessages; savedMessages/loadedExisting are only
+	// touched under it. This avoids re-reading the output file on every save.
+	saveMu         sync.Mutex
+	savedMessages  []ChatMessage
+	loadedExisting bool
+}
+
+// closeConn closes and clears the session connection under the session lock.
+func (s *chatRecordingSession) closeConn() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn != nil {
+		s.conn.Close()
+		s.conn = nil
+	}
 }
 
 // NewChatRecorder creates a new chat recorder service
@@ -139,8 +155,9 @@ func (cr *ChatRecorder) StopRecording(modelID string) error {
 	delete(cr.activeRecorders, modelID)
 	cr.mu.Unlock()
 
-	// Signal the recording goroutine to stop
+	// Signal the recording goroutine to stop and unblock a pending read
 	close(session.stopChan)
+	session.closeConn()
 
 	// Wait for the goroutine to finish with a timeout
 	done := make(chan struct{})
@@ -158,16 +175,13 @@ func (cr *ChatRecorder) StopRecording(modelID string) error {
 	}
 
 	// Save any remaining messages
-	if len(session.messages) > 0 {
+	session.mu.Lock()
+	pending := len(session.messages)
+	session.mu.Unlock()
+	if pending > 0 {
 		if err := cr.saveMessages(session); err != nil {
 			cr.logger.Printf("Error saving final chat messages: %v", err)
 		}
-	}
-
-	// Ensure the connection is closed
-	if session.conn != nil {
-		session.conn.Close()
-		session.conn = nil
 	}
 
 	cr.logger.Printf("Stopped recording chat for %s", session.username)
@@ -192,6 +206,7 @@ func (cr *ChatRecorder) StopAllRecordings() {
 	// Stop each session
 	for _, session := range activeSessions {
 		close(session.stopChan)
+		session.closeConn()
 
 		// Wait with timeout
 		done := make(chan struct{})
@@ -209,16 +224,13 @@ func (cr *ChatRecorder) StopAllRecordings() {
 		}
 
 		// Save any remaining messages
-		if len(session.messages) > 0 {
+		session.mu.Lock()
+		pending := len(session.messages)
+		session.mu.Unlock()
+		if pending > 0 {
 			if err := cr.saveMessages(session); err != nil {
 				cr.logger.Printf("Error saving final chat messages: %v", err)
 			}
-		}
-
-		// Ensure the connection is closed
-		if session.conn != nil {
-			session.conn.Close()
-			session.conn = nil
 		}
 	}
 
@@ -243,10 +255,7 @@ func (cr *ChatRecorder) recordChat(session *chatRecordingSession) {
 			cr.logger.Printf("Recovered from panic in chat recorder: %v", r)
 
 			// Close the connection if it exists
-			if session.conn != nil {
-				session.conn.Close()
-				session.conn = nil
-			}
+			session.closeConn()
 
 			// Check if the session should still be running
 			session.mu.Lock()
@@ -281,10 +290,7 @@ func (cr *ChatRecorder) recordChat(session *chatRecordingSession) {
 		} else {
 			// This is a normal exit (not a panic)
 			// Make sure to close the connection when exiting
-			if session.conn != nil {
-				session.conn.Close()
-				session.conn = nil
-			}
+			session.closeConn()
 			// Mark the session as not running only if this was not a panic
 			session.mu.Lock()
 			session.isRunning = false
@@ -314,14 +320,16 @@ func (cr *ChatRecorder) recordChat(session *chatRecordingSession) {
 			continue
 		}
 
+		// Successful connect: reset the panic-retry budget
+		session.mu.Lock()
+		session.retryCount = 0
+		session.mu.Unlock()
+
 		// Start message handling loop
 		if err := cr.handleMessages(session); err != nil {
 			cr.logger.Printf("Error in message handling: %v, will reconnect", err)
 			// Close the connection before reconnecting
-			if session.conn != nil {
-				session.conn.Close()
-				session.conn = nil
-			}
+			session.closeConn()
 			time.Sleep(cr.reconnectWait)
 			continue
 		}
@@ -355,7 +363,9 @@ func (cr *ChatRecorder) connectAndAuthenticate(session *chatRecordingSession) er
 		return fmt.Errorf("error connecting to chat WebSocket: %v", err)
 	}
 	cr.logger.Printf("Successfully connected to chat WebSocket for %s", session.username)
+	session.mu.Lock()
 	session.conn = conn
+	session.mu.Unlock()
 
 	// Set up error handling for the connection
 	conn.SetPingHandler(func(appData string) error {
@@ -435,7 +445,12 @@ func (cr *ChatRecorder) handleMessages(session *chatRecordingSession) error {
 		data        []byte
 		err         error
 	}
+	session.mu.Lock()
 	conn := session.conn
+	session.mu.Unlock()
+	if conn == nil {
+		return fmt.Errorf("no connection for %s", session.username)
+	}
 	readCh := make(chan readResult)
 	readerDone := make(chan struct{})
 	defer close(readerDone)
@@ -471,7 +486,7 @@ func (cr *ChatRecorder) handleMessages(session *chatRecordingSession) error {
 				Data: "p",
 			}
 			cr.logger.Printf("Sending ping to keep connection alive")
-			if err := session.conn.WriteJSON(pingMsg); err != nil {
+			if err := conn.WriteJSON(pingMsg); err != nil {
 				return fmt.Errorf("error sending ping: %v", err)
 			}
 
@@ -551,8 +566,12 @@ func (cr *ChatRecorder) parseMessage(data string, startTime time.Time) (*ChatMes
 		Event     string `json:"event"`
 	}
 
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty message data")
+	}
+
 	// First, check if the data is a JSON string that needs to be unescaped
-	if data[0] == '"' && data[len(data)-1] == '"' {
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
 		// This is a JSON string that needs to be unescaped
 		var unquotedData string
 		if err := json.Unmarshal([]byte(data), &unquotedData); err != nil {
@@ -718,14 +737,16 @@ func (cr *ChatRecorder) parseMessage(data string, startTime time.Time) (*ChatMes
 
 // saveMessages saves the current messages to the output file
 func (cr *ChatRecorder) saveMessages(session *chatRecordingSession) error {
+	session.saveMu.Lock()
+	defer session.saveMu.Unlock()
+
 	session.mu.Lock()
-	messages := session.messages
-	messageCount := len(messages)
-	session.messages = []ChatMessage{} // Clear the messages
+	newMessages := session.messages
+	session.messages = nil
 	session.lastSaveTime = time.Now()
 	session.mu.Unlock()
 
-	cr.logger.Printf("Attempting to save %d chat messages for %s", messageCount, session.username)
+	cr.logger.Printf("Attempting to save %d chat messages for %s", len(newMessages), session.username)
 
 	// Ensure the directory exists
 	dir := filepath.Dir(session.outputFile)
@@ -733,44 +754,28 @@ func (cr *ChatRecorder) saveMessages(session *chatRecordingSession) error {
 		return fmt.Errorf("error creating directory for chat file: %v", err)
 	}
 
-	// Check if the file exists
-	var existingMessages []ChatMessage
-	if _, err := os.Stat(session.outputFile); err == nil {
-		// File exists, read existing messages
-		cr.logger.Printf("Reading existing chat file: %s", session.outputFile)
-		data, err := os.ReadFile(session.outputFile)
-		if err != nil {
-			return fmt.Errorf("error reading existing chat file: %v", err)
-		}
-
-		if err := json.Unmarshal(data, &existingMessages); err != nil {
-			return fmt.Errorf("error parsing existing chat file: %v", err)
-		}
-
-		cr.logger.Printf("Found %d existing messages in chat file", len(existingMessages))
-	} else {
-		cr.logger.Printf("Creating new chat file: %s", session.outputFile)
-		// Create an empty file if it doesn't exist and we have no messages
-		if messageCount == 0 {
-			if err := os.WriteFile(session.outputFile, []byte("[]"), 0644); err != nil {
-				return fmt.Errorf("error creating empty chat file: %v", err)
+	// Load a pre-existing file once (e.g., recording resumed into the same
+	// path); afterwards the full message list is kept in memory so each save
+	// is a single write instead of a read-merge-write of the whole file.
+	if !session.loadedExisting {
+		session.loadedExisting = true
+		if data, err := os.ReadFile(session.outputFile); err == nil {
+			var existing []ChatMessage
+			if err := json.Unmarshal(data, &existing); err == nil {
+				session.savedMessages = existing
+				cr.logger.Printf("Found %d existing messages in chat file", len(existing))
 			}
-			cr.logger.Printf("Created empty chat file: %s", session.outputFile)
-			return nil
 		}
 	}
 
-	// Combine existing and new messages
-	allMessages := append(existingMessages, messages...)
-	cr.logger.Printf("Total messages to save: %d", len(allMessages))
+	session.savedMessages = append(session.savedMessages, newMessages...)
 
 	// Sort messages by timestamp
-	sort.Slice(allMessages, func(i, j int) bool {
-		return allMessages[i].Timestamp < allMessages[j].Timestamp
+	sort.Slice(session.savedMessages, func(i, j int) bool {
+		return session.savedMessages[i].Timestamp < session.savedMessages[j].Timestamp
 	})
 
-	// Write the combined messages to the file
-	data, err := json.MarshalIndent(allMessages, "", "  ")
+	data, err := json.MarshalIndent(session.savedMessages, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling chat messages: %v", err)
 	}
@@ -779,7 +784,7 @@ func (cr *ChatRecorder) saveMessages(session *chatRecordingSession) error {
 		return fmt.Errorf("error writing chat messages to file: %v", err)
 	}
 
-	cr.logger.Printf("Successfully saved %d chat messages for %s", len(allMessages), session.username)
+	cr.logger.Printf("Successfully saved %d chat messages for %s", len(session.savedMessages), session.username)
 	return nil
 }
 

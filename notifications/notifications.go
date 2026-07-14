@@ -14,6 +14,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"github.com/gen2brain/beeep"
 )
 
@@ -157,7 +158,7 @@ func (ns *NotificationService) sendDiscordNotification(message, username, modelI
 			logger.Logger.Printf("Failed to marshal Discord payload: %v", err)
 			return err
 		}
-		resp, err := http.Post(ns.config.Notifications.DiscordWebhook, "application/json", bytes.NewBuffer(jsonPayload))
+		resp, err := utils.HTTPClient.Post(ns.config.Notifications.DiscordWebhook, "application/json", bytes.NewBuffer(jsonPayload))
 		if err != nil {
 			logger.Logger.Printf("Failed to send Discord notification: %v", err)
 			return err
@@ -203,7 +204,7 @@ func (ns *NotificationService) sendDiscordNotification(message, username, modelI
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -247,7 +248,7 @@ func (ns *NotificationService) sendTelegramNotification(message string, thumbnai
 		}
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 
-		client := &http.Client{}
+		client := utils.HTTPClient
 		resp, err := client.Do(req)
 		if err != nil {
 			logger.Logger.Printf("Failed to send Telegram photo notification: %v", err)
@@ -274,7 +275,7 @@ func (ns *NotificationService) sendTelegramNotification(message string, thumbnai
 	}
 	jsonPayload, _ := json.Marshal(payload)
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	resp, err := utils.HTTPClient.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		logger.Logger.Printf("Failed to send Telegram notification: %v", err)
 		return

@@ -9,6 +9,7 @@ import (
 
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"golang.org/x/time/rate"
 )
 
@@ -60,7 +61,7 @@ func FetchPurchasedAlbums(fanslyHeaders *headers.FanslyHeaders) (*Album, error) 
 
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -101,7 +102,7 @@ func FetchAlbumContent(albumID string, fanslyHeaders *headers.FanslyHeaders) (*A
 
 		fanslyHeaders.AddHeadersToRequest(req, true)
 
-		client := &http.Client{}
+		client := utils.HTTPClient
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, err
@@ -139,7 +140,7 @@ func FetchAccountInfo(accountID string, fanslyHeaders *headers.FanslyHeaders) (s
 
 	fanslyHeaders.AddHeadersToRequest(req, true)
 
-	client := &http.Client{}
+	client := utils.HTTPClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

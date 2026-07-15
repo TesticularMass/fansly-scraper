@@ -3,7 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/agnosto/fansly-scraper/config"
+	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
@@ -341,10 +341,9 @@ func (cr *ChatRecorder) recordChat(session *chatRecordingSession) {
 
 // New helper function to handle connection and authentication
 func (cr *ChatRecorder) connectAndAuthenticate(session *chatRecordingSession) error {
-	// Load config
-	cfg, err := config.LoadConfig(config.GetConfigPath())
+	fanslyHeaders, err := headers.GetCachedHeaders()
 	if err != nil {
-		return fmt.Errorf("error loading config: %v", err)
+		return fmt.Errorf("error loading headers: %v", err)
 	}
 
 	// Connect to the WebSocket server
@@ -354,7 +353,7 @@ func (cr *ChatRecorder) connectAndAuthenticate(session *chatRecordingSession) er
 	cr.logger.Printf("Connecting to chat WebSocket for %s", session.username)
 	conn, resp, err := dialer.Dial("wss://chatws.fansly.com/?v=3", http.Header{
 		"Origin":     []string{"https://fansly.com"},
-		"User-Agent": []string{cfg.Account.UserAgent},
+		"User-Agent": []string{fanslyHeaders.UserAgent},
 	})
 	if err != nil {
 		if resp != nil {
@@ -382,7 +381,7 @@ func (cr *ChatRecorder) connectAndAuthenticate(session *chatRecordingSession) er
 		Data string `json:"d"`
 	}{
 		Type: 1,
-		Data: fmt.Sprintf(`{"token":"%s","v":3}`, cfg.Account.AuthToken),
+		Data: fmt.Sprintf(`{"token":"%s","v":3}`, fanslyHeaders.AuthToken),
 	}
 	cr.logger.Printf("Sending authentication message to chat server")
 	if err := conn.WriteJSON(authMsg); err != nil {

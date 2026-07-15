@@ -81,7 +81,8 @@ func (d *Downloader) DumpChatLogs(ctx context.Context, modelId, modelName string
 			bar.Add(1)
 		}
 
-		if nextCursor == "" || caughtUp {
+		// Non-advancing cursor guards against the API returning the same page forever.
+		if nextCursor == "" || nextCursor == cursor || caughtUp {
 			break
 		}
 		cursor = nextCursor

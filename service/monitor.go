@@ -37,6 +37,7 @@ type MonitoringService struct {
 	storagePath          string
 	recordingsPath       string
 	stopChan             chan struct{}
+	shutdownOnce         sync.Once
 	logger               *log.Logger
 	isTUI                bool
 	notificationSvc      *notifications.NotificationService
@@ -745,17 +746,17 @@ func (ms *MonitoringService) checkModels() {
 }
 
 func (ms *MonitoringService) Shutdown() {
-	close(ms.stopChan)
+	// Both the TUI cleanup and the signal handler can call Shutdown;
+	// a second close of stopChan would panic.
+	ms.shutdownOnce.Do(func() {
+		close(ms.stopChan)
 
-	if ms.chatRecorder != nil {
-		ms.chatRecorder.StopAllRecordings()
-	}
+		if ms.chatRecorder != nil {
+			ms.chatRecorder.StopAllRecordings()
+		}
 
-	time.Sleep(5 * time.Second)
-
-	//ms.mu.Lock()
-	//defer ms.mu.Unlock()
-	//ms.saveState()
+		time.Sleep(5 * time.Second)
+	})
 }
 
 func clearTerminal() {

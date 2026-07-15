@@ -122,7 +122,13 @@ func FetchAlbumContent(albumID string, fanslyHeaders *headers.FanslyHeaders) (*A
 		if len(contentResp.Response.AlbumContent) == 0 {
 			hasMore = false
 		} else {
-			before = contentResp.Response.AlbumContent[len(contentResp.Response.AlbumContent)-1].ID
+			next := contentResp.Response.AlbumContent[len(contentResp.Response.AlbumContent)-1].ID
+			// Guard against the API returning the same page forever.
+			if next == before {
+				hasMore = false
+			} else {
+				before = next
+			}
 		}
 	}
 

@@ -189,6 +189,24 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 		}
 	}()
 
+	// Pre-fetch media details for all non-skipped posts in batched calls:
+	// the per-post endpoint is rate limited, so fetching one post at a time
+	// serializes the whole timeline regardless of download concurrency.
+	skipFiles := make(map[string]bool, len(timelinePosts))
+	var postsToFetch []string
+	for _, post := range timelinePosts {
+		if d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(post.ID) {
+			skipFiles[post.ID] = true
+		} else {
+			postsToFetch = append(postsToFetch, post.ID)
+		}
+	}
+
+	mediaByPost, err := posts.GetPostsMediaBatch(postsToFetch, d.headers)
+	if err != nil {
+		logger.Logger.Printf("[WARN] [%s] Some post batches failed to fetch: %v", modelName, err)
+	}
+
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 10)
 
@@ -197,24 +215,21 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 		go func(post posts.Post) {
 			defer wg.Done()
 
-			shouldSkipFiles := d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(post.ID)
-
 			downloadFailed := false
-			if !shouldSkipFiles {
+			if !skipFiles[post.ID] {
 				func() {
 					semaphore <- struct{}{}
 					defer func() { <-semaphore }()
 
-					// We only fetch media and download if we aren't skipping
-					accountMediaItems, err := posts.GetPostMedia(post.ID, d.headers)
-					if err != nil {
-						logger.Logger.Printf("[ERROR] [%s] Failed to fetch media for post %s: %v", modelName, post.ID, err)
+					accountMediaItems, ok := mediaByPost[post.ID]
+					if !ok {
+						logger.Logger.Printf("[ERROR] [%s] Failed to fetch media for post %s", modelName, post.ID)
 						downloadFailed = true
 						return
 					}
 
 					for i, accountMedia := range accountMediaItems {
-						err = d.DownloadMediaItem(ctx, accountMedia, baseDir, modelName, post, i)
+						err := d.DownloadMediaItem(ctx, accountMedia, baseDir, modelName, post, i)
 						if err != nil {
 							logger.Logger.Printf("[ERROR] [%s] Failed to download media item %s: %v", modelName, accountMedia.ID, err)
 							downloadFailed = true

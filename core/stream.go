@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/headers"
 )
 
@@ -30,12 +29,7 @@ func GetStreamData(modelID string) (StreamData, error) {
 		return StreamData{}, fmt.Errorf("error creating request: %v", err)
 	}
 
-	cfg, err := config.LoadConfig(config.GetConfigPath())
-	if err != nil {
-		return StreamData{}, fmt.Errorf("error loading config: %v", err)
-	}
-
-	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
+	fanslyHeaders, err := headers.GetCachedHeaders()
 	if err != nil {
 		return StreamData{}, fmt.Errorf("error creating headers: %v", err)
 	}

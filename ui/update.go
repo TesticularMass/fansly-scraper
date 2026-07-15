@@ -96,13 +96,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if m.actionChosen == "monitor" {
 				m.state = LiveMonitorState
-				m.filteredLiveMonitorModels = m.followedModels
-				m.initializeLivestreamMonitoringTable()
-				m.updateMonitoringTable()
-			} else {
-				m.state = FollowedModelsState
-				m.updateTable()
+				cmd := m.initializeLivestreamMonitoringTable()
+				return m, cmd
 			}
+			m.state = FollowedModelsState
+			m.updateTable()
 		} else {
 			// Handle error
 			m.state = MainMenuState
@@ -121,11 +119,18 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountsFetched = false
 		return m, tea.ClearScreen
 	case downloadCompleteMsg:
+		m.cancelDownload = nil
 		return m, tea.Sequence(
 			tea.Tick(3*time.Second, func(time.Time) tea.Msg {
 				return delayedDownloadCompleteMsg{}
 			}),
 		)
+	case downloadErrorMsg:
+		m.cancelDownload = nil
+		m.message = "Download error: " + msg.Error.Error()
+		m.state = MainMenuState
+		m.cursorPos = 0
+		return m, tea.ClearScreen
 	case delayedDownloadCompleteMsg:
 		m.state = CompletionState
 		m.cursorPos = 0
@@ -142,7 +147,16 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case LiveStatusUpdateMsg:
 		if m.state == LiveMonitorState {
+			return m, m.fetchLiveStatusesCmd()
+		}
+		return m, nil
+	case liveStatusesMsg:
+		m.liveFetchInFlight = false
+		m.liveStatuses = msg.statuses
+		if m.state == LiveMonitorState {
 			m.updateMonitoringTable()
+			// Schedule the next refresh; the chain stops once the user
+			// leaves the monitor screen.
 			return m, tea.Tick(2*time.Minute, func(t time.Time) tea.Msg {
 				return LiveStatusUpdateMsg{}
 			})

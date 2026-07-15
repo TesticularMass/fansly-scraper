@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/agnosto/fansly-scraper/logger"
 
@@ -84,6 +83,9 @@ func parseIndividualPostLinks(input string) []string {
 
 // startIndividualPostsDownload starts the download of multiple post IDs/URLs asynchronously
 func (m *MainModel) startIndividualPostsDownload(input string) tea.Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelDownload = cancel
+
 	return func() tea.Msg {
 		postIDs := parseIndividualPostLinks(input)
 		if len(postIDs) == 0 {
@@ -91,22 +93,17 @@ func (m *MainModel) startIndividualPostsDownload(input string) tea.Cmd {
 			return downloadCompleteMsg{}
 		}
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			ctx := context.Background()
-
-			for i, id := range postIDs {
-				logger.Logger.Printf("Processing individual post %d/%d (ID: %s)", i+1, len(postIDs), id)
-				if err := m.downloader.DownloadPostByID(ctx, id); err != nil {
-					logger.Logger.Printf("Failed to download individual post %s: %v", id, err)
-				}
+		for i, id := range postIDs {
+			if ctx.Err() != nil {
+				logger.Logger.Printf("Individual post download cancelled")
+				break
 			}
-		}()
+			logger.Logger.Printf("Processing individual post %d/%d (ID: %s)", i+1, len(postIDs), id)
+			if err := m.downloader.DownloadPostByID(ctx, id); err != nil {
+				logger.Logger.Printf("Failed to download individual post %s: %v", id, err)
+			}
+		}
 
-		wg.Wait()
 		return downloadCompleteMsg{}
 	}
 }

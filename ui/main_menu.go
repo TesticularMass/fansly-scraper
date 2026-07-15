@@ -73,8 +73,10 @@ func (m *MainModel) handleMainMenuSelection() (tea.Model, tea.Cmd) {
 	case "Download purchased content":
 		m.actionChosen = "download_purchases"
 		m.state = DownloadPurchasedState
+		ctx, cancel := context.WithCancel(context.Background())
+		m.cancelDownload = cancel
 		return m, func() tea.Msg {
-			err := m.downloader.DownloadPurchasedContent(context.Background())
+			err := m.downloader.DownloadPurchasedContent(ctx)
 			if err != nil {
 				logger.Logger.Printf("Error downloading purchased content: %v", err)
 				return downloadErrorMsg{Error: err}
@@ -95,9 +97,7 @@ func (m *MainModel) handleMainMenuSelection() (tea.Model, tea.Cmd) {
 			)
 		} else {
 			m.state = LiveMonitorState
-			m.filteredLiveMonitorModels = m.followedModels
-			m.updateMonitoringTable()
-			return m, nil
+			return m, m.initializeLivestreamMonitoringTable()
 		}
 	case "Like all of a user's post":
 		m.actionChosen = "like"

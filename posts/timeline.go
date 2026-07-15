@@ -125,7 +125,14 @@ func GetAllTimelinePosts(accountID string, wallID string, fanslyHeaders *headers
 		if len(posts) == 0 {
 			hasMore = false
 		} else {
-			before = posts[len(posts)-1].ID
+			next := posts[len(posts)-1].ID
+			// Guard against the API returning the same page forever.
+			if next == before {
+				logger.Logger.Printf("[WARN] Timeline pagination did not advance (cursor %s), stopping", before)
+				hasMore = false
+			} else {
+				before = next
+			}
 		}
 
 		bar.Add(len(posts))

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,7 +17,9 @@ const (
 )
 
 var (
-	Logger *log.Logger
+	// Logger defaults to a discard logger so code paths that run before
+	// InitLogger (config wizard, tests) can't hit a nil logger.
+	Logger = log.New(io.Discard, "", log.LstdFlags)
 )
 
 func InitLogger(cfg *config.Config) error {

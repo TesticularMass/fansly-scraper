@@ -46,8 +46,10 @@ func (m *MainModel) HandleWallSelectionUpdate(msg tea.Msg) (tea.Model, tea.Cmd) 
 }
 
 func (m *MainModel) startWallDownload() tea.Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelDownload = cancel
+
 	return func() tea.Msg {
-		ctx := context.Background()
 		err := m.downloader.DownloadTimeline(ctx, m.selectedModelId, m.selectedModel, m.selectedWallID)
 		if err != nil {
 			logger.Logger.Printf("Error downloading wall %s: %v", m.selectedWallID, err)

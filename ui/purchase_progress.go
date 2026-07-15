@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 	//"github.com/agnosto/fansly-scraper/config"
 	//"github.com/agnosto/fansly-scraper/core"
@@ -18,10 +17,19 @@ func (m *MainModel) HandlePurchaseProgressMenuUpdate(msg tea.Msg) (tea.Model, te
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Back):
+			// Stop the in-flight download before leaving the screen
+			if m.cancelDownload != nil {
+				m.cancelDownload()
+				m.cancelDownload = nil
+			}
 			m.state = MainMenuState
 			m.cursorPos = 0
 			return m, nil
 		case key.Matches(msg, m.keys.Quit):
+			if m.cancelDownload != nil {
+				m.cancelDownload()
+				m.cancelDownload = nil
+			}
 			m.quit = true
 			return m, tea.Quit
 		}
@@ -33,7 +41,7 @@ func (m *MainModel) HandlePurchaseProgressMenuUpdate(msg tea.Msg) (tea.Model, te
 func (m *MainModel) RenderPurchaseProgressMenu() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Downloading purchased content...\n\n"))
+	sb.WriteString("Downloading purchased content...\n\n")
 
 	return sb.String()
 }

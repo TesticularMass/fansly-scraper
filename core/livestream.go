@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/headers"
 	"github.com/agnosto/fansly-scraper/utils"
 )
@@ -24,13 +23,7 @@ type StreamResponse struct {
 }
 
 func CheckIfModelIsLive(modelID string) (bool, string, error) {
-	cfg, err := config.LoadConfig(config.GetConfigPath())
-	if err != nil {
-		return false, "", fmt.Errorf("failed to load config: %v", err)
-	}
-
-	// Create FanslyHeaders instance
-	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
+	fanslyHeaders, err := headers.GetCachedHeaders()
 	if err != nil {
 		return false, "", fmt.Errorf("error creating headers: %v", err)
 	}
@@ -50,6 +43,10 @@ func CheckIfModelIsLive(modelID string) (bool, string, error) {
 		return false, "", fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("live check failed with status code %d", resp.StatusCode)
+	}
 
 	var streamResp StreamResponse
 	if err := json.NewDecoder(resp.Body).Decode(&streamResp); err != nil {

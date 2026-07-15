@@ -63,13 +63,7 @@ type AccountResponse struct {
 }
 
 func GetModelIDFromUsername(username string) (string, error) {
-	cfg, err := config.LoadConfig(config.GetConfigPath())
-	if err != nil {
-		return "", fmt.Errorf("failed to load config: %v", err)
-	}
-
-	// Create FanslyHeaders instance
-	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
+	fanslyHeaders, err := headers.GetCachedHeaders()
 	if err != nil {
 		return "", fmt.Errorf("error creating headers: %v", err)
 	}

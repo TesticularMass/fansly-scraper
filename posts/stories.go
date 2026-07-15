@@ -87,6 +87,11 @@ func filterValidAccountMedia(accountMedia []AccountMedia) []AccountMedia {
 }
 
 func hasValidLocations(media AccountMedia) bool {
+	// Check the main media item itself for locations
+	if len(media.Media.Locations) > 0 {
+		return true
+	}
+
 	// Check main media variants for locations
 	for _, variant := range media.Media.Variants {
 		if len(variant.Locations) > 0 {

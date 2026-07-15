@@ -12,7 +12,6 @@ import (
 	"github.com/agnosto/fansly-scraper/service"
 
 	"context"
-	"sync"
 
 	"github.com/schollz/progressbar/v3"
 
@@ -88,6 +87,8 @@ type MainModel struct {
 	accountsFetched           bool
 	selectedWallID            string
 	postLinksInput            textinput.Model
+	liveStatuses              map[string]bool // model ID -> live, cached for the monitor table
+	liveFetchInFlight         bool
 }
 
 type loadingTickMsg struct{}
@@ -110,11 +111,9 @@ type delayedLikeUnlikeCompleteMsg struct{}
 
 type monitoringSelectedMsg struct{}
 
-type MonitoringService struct {
-	activeMonitors map[string]context.CancelFunc
-	mu             sync.Mutex
-	ctx            context.Context
-	cancel         context.CancelFunc
+// liveStatusesMsg carries freshly fetched live statuses (model ID -> live).
+type liveStatusesMsg struct {
+	statuses map[string]bool
 }
 
 type fetchAccountInfoMsg struct {
@@ -262,6 +261,7 @@ func NewMainModel(downloader *download.Downloader, version string, monitoringSer
 		loadingDots:       0,
 		accountsFetched:   false,
 		postLinksInput:    postLinksInput,
+		liveStatuses:      make(map[string]bool),
 	}
 }
 

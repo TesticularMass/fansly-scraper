@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	//"strings"
+	"sync"
 	"time"
 
 	"github.com/agnosto/fansly-scraper/config"
@@ -27,6 +28,37 @@ type FanslyHeaders struct {
 }
 
 const fallbackCheckKey = "necvac-govry3-tybkYz"
+
+var (
+	cachedMu      sync.Mutex
+	cachedHeaders *FanslyHeaders
+)
+
+// GetCachedHeaders returns a process-wide shared FanslyHeaders, building it on
+// first use. Monitor goroutines poll every few seconds per model; rebuilding
+// headers each time reloads the config and can hit the network (device ID,
+// session websocket, check-key scrape).
+func GetCachedHeaders() (*FanslyHeaders, error) {
+	cachedMu.Lock()
+	defer cachedMu.Unlock()
+
+	if cachedHeaders != nil {
+		return cachedHeaders, nil
+	}
+
+	cfg, err := config.LoadConfig(config.GetConfigPath())
+	if err != nil {
+		return nil, err
+	}
+
+	h, err := NewFanslyHeaders(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	cachedHeaders = h
+	return h, nil
+}
 
 func NewFanslyHeaders(cfg *config.Config) (*FanslyHeaders, error) {
 	headers := &FanslyHeaders{

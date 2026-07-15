@@ -229,7 +229,13 @@ func parseSegments(content, baseURL string) ([]string, error) {
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "#") && (strings.HasSuffix(line, ".ts") || strings.HasSuffix(line, ".m3u8") || strings.HasSuffix(line, ".m4s")) {
+		// Check the extension on the path only: segment lines may carry
+		// query strings (auth tokens), which broke a plain suffix match.
+		pathOnly := line
+		if q := strings.IndexAny(pathOnly, "?#"); q >= 0 {
+			pathOnly = pathOnly[:q]
+		}
+		if !strings.HasPrefix(line, "#") && (strings.HasSuffix(pathOnly, ".ts") || strings.HasSuffix(pathOnly, ".m3u8") || strings.HasSuffix(pathOnly, ".m4s")) {
 			segmentURL, err := url.Parse(line)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse segment URL: %w", err)

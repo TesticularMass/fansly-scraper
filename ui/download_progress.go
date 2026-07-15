@@ -18,10 +18,19 @@ func (m *MainModel) HandleDownloadProgressMenuUpdate(msg tea.Msg) (tea.Model, te
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Back):
+			// Stop the in-flight download before leaving the screen
+			if m.cancelDownload != nil {
+				m.cancelDownload()
+				m.cancelDownload = nil
+			}
 			m.state = FollowedModelsState
 			m.cursorPos = 0
 			return m, nil
 		case key.Matches(msg, m.keys.Quit):
+			if m.cancelDownload != nil {
+				m.cancelDownload()
+				m.cancelDownload = nil
+			}
 			m.quit = true
 			return m, tea.Quit
 		}

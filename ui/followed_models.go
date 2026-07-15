@@ -96,6 +96,9 @@ func (m *MainModel) RenderFollowedModelsMenu() string {
 	sb.WriteString(m.table.View() + "\n")
 	helpView := m.help.View(m.keys)
 	height := m.height - strings.Count(helpView, "\n") - m.table.Height() - 8
+	if height < 0 {
+		height = 0 // strings.Repeat panics on negative counts (small terminals)
+	}
 
 	sb.WriteString("\n" + strings.Repeat("\n", height) + helpView)
 

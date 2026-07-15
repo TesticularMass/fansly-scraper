@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/headers"
@@ -61,44 +60,34 @@ func (m *MainModel) InitiateLikeUnlike(action string) tea.Cmd {
 			return likeUnlikeCompletedMsg{success: false, err: err}
 		}
 
-		var wg sync.WaitGroup
-		wg.Add(1)
+		ctx := context.Background()
 
-		go func() {
-			defer wg.Done()
+		// Create FanslyHeaders instance
+		fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
+		if err != nil {
+			logger.Logger.Printf("[ERROR] Failed to create headers: %v", err)
+			return likeUnlikeCompletedMsg{success: false, err: err}
+		}
 
-			ctx := context.Background()
+		// Fetch all timeline posts
+		timelinePosts, err := posts.GetAllTimelinePosts(m.selectedModelId, "", fanslyHeaders, cfg.Options.PostLimit)
+		if err != nil {
+			logger.Logger.Printf("Error fetching timeline posts for %s: %v", m.selectedModel, err)
+			return likeUnlikeCompletedMsg{success: false, err: err}
+		}
 
-			// Create FanslyHeaders instance
-			fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
-			if err != nil {
-				logger.Logger.Printf("[ERROR] Failed to create headers: %v", err)
-				return
-			}
+		// Process the posts
+		if action == "like" {
+			logger.Logger.Printf("[INFO] Starting To Like All Posts for %v", m.selectedModel)
+			err = interactions.LikeAllPosts(ctx, timelinePosts, configPath)
+		} else {
+			logger.Logger.Printf("[INFO] Starting To Unlike All Posts for %v", m.selectedModel)
+			err = interactions.UnlikeAllPosts(ctx, timelinePosts, configPath)
+		}
 
-			// Fetch all timeline posts
-			timelinePosts, err := posts.GetAllTimelinePosts(m.selectedModelId, "", fanslyHeaders, cfg.Options.PostLimit)
-			if err != nil {
-				logger.Logger.Printf("Error fetching timeline posts for %s: %v", m.selectedModel, err)
-				return
-			}
-
-			// Process the posts
-			if action == "like" {
-				logger.Logger.Printf("[INFO] Starting To Like All Posts for %v", m.selectedModel)
-				err = interactions.LikeAllPosts(ctx, timelinePosts, configPath)
-			} else {
-				logger.Logger.Printf("[INFO] Starting To Unlike All Posts for %v", m.selectedModel)
-				err = interactions.UnlikeAllPosts(ctx, timelinePosts, configPath)
-			}
-
-			if err != nil {
-				logger.Logger.Printf("Error %sing posts for %s: %v", action, m.selectedModel, err)
-			}
-		}()
-
-		wg.Wait()
-		logger.Logger.Printf("[DEBUG] Like/Unlike operation completed, sending likeUnlikeCompletedMsg")
-		return likeUnlikeCompletedMsg{success: true, err: nil}
+		if err != nil {
+			logger.Logger.Printf("Error %sing posts for %s: %v", action, m.selectedModel, err)
+		}
+		return likeUnlikeCompletedMsg{success: err == nil, err: err}
 	}
 }

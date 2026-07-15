@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	//"os/exec"
@@ -9,7 +8,6 @@ import (
 	//"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/agnosto/fansly-scraper/auth"
 	"github.com/agnosto/fansly-scraper/config"
@@ -21,71 +19,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func NewMonitoringService() *MonitoringService {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &MonitoringService{
-		activeMonitors: make(map[string]context.CancelFunc),
-		ctx:            ctx,
-		cancel:         cancel,
-	}
-}
-
-func (ms *MonitoringService) Shutdown() {
-	ms.cancel()
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	for _, cancel := range ms.activeMonitors {
-		cancel()
-	}
-}
-
-func (ms *MonitoringService) StartMonitoring(modelID, username string) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	if _, exists := ms.activeMonitors[modelID]; exists {
-		return // Already monitoring
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	ms.activeMonitors[modelID] = cancel
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// Check if the model is live
-				isLive, _, err := core.CheckIfModelIsLive(modelID)
-				if err != nil {
-					logger.Logger.Printf("Error checking if %s is live: %v", username, err)
-				} else if isLive {
-					logger.Logger.Printf("%s is now live!", username)
-					// Here you would implement the logic to start recording
-					// This could involve calling a function from your downloader package
-				}
-				time.Sleep(2 * time.Minute) // Check every 2 minutes
-			}
-		}
-	}()
-}
-
-func (ms *MonitoringService) StopMonitoring(modelID string) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	if cancel, exists := ms.activeMonitors[modelID]; exists {
-		cancel()
-		delete(ms.activeMonitors, modelID)
-	}
-}
-
 func (m *MainModel) HandleLivestreamMonitorUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case LiveStatusUpdateMsg:
-		m.updateMonitoringTable()
-		return m, tea.Batch(
-			tea.Tick(time.Minute*2, func(t time.Time) tea.Msg {
-				return LiveStatusUpdateMsg{}
-			}),
-		)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit), msg.String() == "ctrl+c":
@@ -103,6 +38,9 @@ func (m *MainModel) HandleLivestreamMonitorUpdate(msg tea.Msg) (tea.Model, tea.C
 			m.monitoringTable.MoveDown(1)
 		case key.Matches(msg, m.keys.Select):
 			selectedRow := m.monitoringTable.SelectedRow()
+			if len(selectedRow) < 2 {
+				return m, nil // Empty table (e.g. filter matched nothing)
+			}
 			modelID := selectedRow[1]
 			username := selectedRow[0]
 
@@ -111,7 +49,8 @@ func (m *MainModel) HandleLivestreamMonitorUpdate(msg tea.Msg) (tea.Model, tea.C
 			m.monitoringService.ToggleMonitoring(modelID, username)
 			m.updateMonitoringTable()
 
-			return m, nil
+			// Refresh live statuses so a newly monitored model shows up
+			return m, m.fetchLiveStatusesCmd()
 		case key.Matches(msg, m.keys.Filter):
 			m.state = LiveMonitorFilterState
 			return m, nil
@@ -186,10 +125,32 @@ func (m *MainModel) initializeLivestreamMonitoringTable() tea.Cmd {
 	m.monitoringService.SetTUIMode(true)
 	m.monitoringService.StartMonitoring()
 	m.updateMonitoringTable()
-	return tea.Batch(
-		m.startLiveStatusUpdates(),
-		func() tea.Msg { return LiveStatusUpdateMsg{} },
-	)
+	// Kick off the async status fetch; each result schedules the next tick.
+	return m.fetchLiveStatusesCmd()
+}
+
+// fetchLiveStatusesCmd checks live status for all monitored models off the
+// UI thread. Doing this synchronously in updateMonitoringTable froze the TUI
+// for seconds per refresh (one API round-trip per monitored model).
+func (m *MainModel) fetchLiveStatusesCmd() tea.Cmd {
+	if m.liveFetchInFlight {
+		return nil
+	}
+	m.liveFetchInFlight = true
+	monitored := m.loadMonitoringState()
+
+	return func() tea.Msg {
+		statuses := make(map[string]bool, len(monitored))
+		for modelID := range monitored {
+			isLive, _, err := core.CheckIfModelIsLive(modelID)
+			if err != nil {
+				logger.Logger.Printf("Error checking live status for %s: %v", modelID, err)
+				continue
+			}
+			statuses[modelID] = isLive
+		}
+		return liveStatusesMsg{statuses: statuses}
+	}
 }
 
 func (m *MainModel) loadMonitoringState() map[string]string {
@@ -228,15 +189,15 @@ func (m *MainModel) updateMonitoringTable() {
 
 	var statusList []modelStatusData
 
-	// Populate statusList
+	// Populate statusList from the cached statuses; fetchLiveStatusesCmd
+	// refreshes them asynchronously.
 	for _, model := range m.filteredLiveMonitorModels {
 		data := modelStatusData{
 			model: model,
 		}
 		if _, isMonitored := activeMonitors[model.ID]; isMonitored {
 			data.isMonitored = true
-			isLive, _, _ := core.CheckIfModelIsLive(model.ID)
-			data.isLive = isLive
+			data.isLive = m.liveStatuses[model.ID]
 		}
 		statusList = append(statusList, data)
 	}
@@ -309,12 +270,6 @@ func (m *MainModel) applyLiveMonitorFilter() {
 	}
 	m.filteredLiveMonitorModels = filtered
 	m.updateMonitoringTable()
-}
-
-func (m *MainModel) startLiveStatusUpdates() tea.Cmd {
-	return tea.Tick(time.Minute*2, func(t time.Time) tea.Msg {
-		return LiveStatusUpdateMsg{}
-	})
 }
 
 func (m *MainModel) Cleanup() {

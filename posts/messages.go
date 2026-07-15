@@ -161,7 +161,9 @@ func GetAllMessagesWithMedia(modelID string, fanslyHeaders *headers.FanslyHeader
 			break
 		}
 
-		if nextCursor == "" {
+		// Empty or non-advancing cursor means we're done (the latter guards
+		// against the API returning the same page forever).
+		if nextCursor == "" || nextCursor == msgCursor {
 			break
 		}
 		msgCursor = nextCursor

@@ -59,6 +59,7 @@ type OptionsConfig struct {
 	PostLimit               int    `toml:"post_limit"`
 	SkipLongVideos          bool   `toml:"skip_long_videos"`
 	MaxVideoDurationSeconds int    `toml:"max_video_duration_seconds"`
+	ApplyFileTimestamps     bool   `toml:"apply_file_timestamps"`
 }
 
 type NotificationsConfig struct {
@@ -203,6 +204,7 @@ func CreateDefaultConfig() *Config {
 			PostLimit:               0,
 			SkipLongVideos:          false,
 			MaxVideoDurationSeconds: 2700,
+			ApplyFileTimestamps:     false,
 		},
 		LiveSettings: LiveSettingsConfig{
 			SaveLocation:            "", // Empty means use default path

@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestSanitizeFilename(t *testing.T) {
 	tests := []struct {
@@ -38,6 +42,44 @@ func TestFormatVODFilename(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigApplyFileTimestamps(t *testing.T) {
+	cfg := CreateDefaultConfig()
+	if cfg.Options.ApplyFileTimestamps != false {
+		t.Errorf("expected ApplyFileTimestamps to default to false, got %v", cfg.Options.ApplyFileTimestamps)
+	}
+}
+
+func TestEnsureConfigUpdatedAddMissingField(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.toml")
+
+	// Write an old config file without apply_file_timestamps
+	oldConfig := `[account]
+auth_token = "dummy_token"
+user_agent = "dummy_agent"
+
+[options]
+save_location = "/tmp/downloads"
+`
+	if err := os.WriteFile(configPath, []byte(oldConfig), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	err := EnsureConfigUpdated(configPath)
+	if err != nil {
+		t.Fatalf("EnsureConfigUpdated failed: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if cfg.Options.ApplyFileTimestamps != false {
+		t.Errorf("expected ApplyFileTimestamps to be updated to false, got %v", cfg.Options.ApplyFileTimestamps)
+	}
+}
+
 func TestMergeConfigs(t *testing.T) {
 	existing := CreateDefaultConfig()
 	existing.Account.AuthToken = "old-token"
@@ -45,6 +87,7 @@ func TestMergeConfigs(t *testing.T) {
 	existing.Options.SaveLocation = "/old/location"
 	existing.Notifications.DiscordWebhook = "https://old.webhook"
 	existing.LiveSettings.CheckInterval = 120
+	existing.Options.ApplyFileTimestamps = false
 
 	incoming := CreateDefaultConfig()
 	incoming.Account.AuthToken = "new-token"
@@ -52,6 +95,7 @@ func TestMergeConfigs(t *testing.T) {
 	incoming.Options.SaveLocation = ""
 	incoming.Notifications.DiscordWebhook = ""
 	incoming.LiveSettings.CheckInterval = 0 // Unset must fall back to existing
+	incoming.Options.ApplyFileTimestamps = true
 
 	merged := MergeConfigs(existing, incoming)
 
@@ -69,5 +113,8 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if merged.LiveSettings.CheckInterval != 120 {
 		t.Errorf("CheckInterval = %d, want 120 (0 must fall back to existing)", merged.LiveSettings.CheckInterval)
+	}
+	if merged.Options.ApplyFileTimestamps != true {
+		t.Errorf("expected merged ApplyFileTimestamps to be true, got %v", merged.Options.ApplyFileTimestamps)
 	}
 }

@@ -37,7 +37,7 @@ func (m *MainModel) HandleWallSelectionUpdate(msg tea.Msg) (tea.Model, tea.Cmd) 
 			selectedRow := m.table.SelectedRow()
 			// The ID is hidden or in column 0 depending on how we set up the table
 			// Let's assume ID is column 0
-			if len(selectedRow) > 0 {
+			if len(selectedRow) > 1 {
 				m.selectedWallID = selectedRow[1]
 				m.state = DownloadProgressState
 				return m, m.startWallDownload()

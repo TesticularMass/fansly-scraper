@@ -38,6 +38,9 @@ func (m *MainModel) HandleFollowedModelsMenuUpdate(msg tea.Msg) (tea.Model, tea.
 				return m, nil
 			}
 			selectedRow := m.table.SelectedRow()
+			if len(selectedRow) < 2 {
+				return m, nil
+			}
 			m.selectedModel = selectedRow[1]
 			m.filteredModels = m.followedModels // Reset to unfiltered list
 			m.filterInput = ""                  // Reset filter input

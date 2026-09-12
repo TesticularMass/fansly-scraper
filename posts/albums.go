@@ -68,6 +68,10 @@ func FetchPurchasedAlbums(fanslyHeaders *headers.FanslyHeaders) (*Album, error) 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch purchased albums: HTTP %d", resp.StatusCode)
+	}
+
 	var albumsResp AlbumsResponse
 	err = json.NewDecoder(resp.Body).Decode(&albumsResp)
 	if err != nil {
@@ -108,6 +112,10 @@ func FetchAlbumContent(albumID string, fanslyHeaders *headers.FanslyHeaders) (*A
 			return nil, err
 		}
 		// No defer resp.Body.Close() inside the loop
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to fetch album content: HTTP %d", resp.StatusCode)
+		}
 
 		var contentResp AlbumContentResponse
 		err = json.NewDecoder(resp.Body).Decode(&contentResp)
@@ -152,6 +160,10 @@ func FetchAccountInfo(accountID string, fanslyHeaders *headers.FanslyHeaders) (s
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch account info: HTTP %d", resp.StatusCode)
+	}
 
 	var accountResp struct {
 		Success  bool `json:"success"`

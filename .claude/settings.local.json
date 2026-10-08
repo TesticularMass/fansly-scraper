@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk read *)",
+      "Bash(rtk ls *)",
+      "PowerShell(winget install --id GoLang.Go --accept-source-agreements --accept-package-agreements --silent)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; go version; go build ./... && go vet ./...)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; go build ./... && go vet ./... && echo VET-CLEAN)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; $env:GOOS='linux'; go build ./...; if \\($LASTEXITCODE -eq 0\\) { $env:GOOS='darwin'; go build ./... }; $ok = $LASTEXITCODE; $env:GOOS=''; if \\($ok -eq 0\\) { echo CROSS-OK } else { exit 1 })",
+      "Bash(rtk grep *)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; gofmt -l .; $env:GOOS='linux'; go build ./...; if \\($LASTEXITCODE -eq 0\\) { $env:GOOS='darwin'; go build ./... }; $ok = $LASTEXITCODE; $env:GOOS=''; if \\($ok -eq 0\\) { echo CROSS-OK } else { exit 1 })",
+      "Bash(rtk wc *)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; go build ./... && go vet ./... && go test ./config ./download ./ui)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; go build ./... && go vet ./... && go test ./...)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\Go\\\\bin;$env:PATH\"; go build ./... && go vet ./... && go test ./... 2>&1 | Select-String -Pattern \"ok|FAIL|PASS\" ; if \\($LASTEXITCODE -eq 0\\) { echo ALL-GREEN })",
+      "Bash(rtk gh *)"
+    ]
+  }
+}

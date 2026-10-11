@@ -23,8 +23,6 @@ import (
 
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/db"
-	"github.com/agnosto/fansly-scraper/db/repository"
-	"github.com/agnosto/fansly-scraper/db/service"
 	"github.com/agnosto/fansly-scraper/logger"
 	"github.com/agnosto/fansly-scraper/posts"
 	"github.com/agnosto/fansly-scraper/utils"
@@ -42,20 +40,18 @@ type logWriter struct {
 }
 
 type Downloader struct {
-	database             *db.Database
-	saveLocation         string
-	authToken            string
-	userAgent            string
-	M3U8Download         bool
-	headers              *headers.FanslyHeaders
-	limiter              *rate.Limiter
-	progressBar          *progressbar.ProgressBar
-	logMu                sync.Mutex
-	ffmpegAvailable      bool
-	fileService          *service.FileService
-	ProcessedPostService *service.ProcessedPostService
-	cfg                  *config.Config
-	m3u8Semaphore        *semaphore.Weighted
+	database        *db.Database
+	saveLocation    string
+	authToken       string
+	userAgent       string
+	M3U8Download    bool
+	headers         *headers.FanslyHeaders
+	limiter         *rate.Limiter
+	progressBar     *progressbar.ProgressBar
+	logMu           sync.Mutex
+	ffmpegAvailable bool
+	cfg             *config.Config
+	m3u8Semaphore   *semaphore.Weighted
 }
 
 func (w logWriter) Write(p []byte) (n int, err error) {
@@ -68,11 +64,11 @@ func (w logWriter) Write(p []byte) (n int, err error) {
 }
 
 func (d *Downloader) fileExists(filePath string) bool {
-	return d.fileService.FileExists(filePath)
+	return d.database.FileExists(filePath)
 }
 
 func (d *Downloader) saveFileHash(modelName string, hash, path, fileType, postID string) error {
-	return d.fileService.SaveFile(modelName, hash, path, fileType, postID)
+	return d.database.SaveFile(modelName, hash, path, fileType, postID)
 }
 
 func NewDownloader(cfg *config.Config, ffmpegAvailable bool) (*Downloader, error) {
@@ -82,13 +78,6 @@ func NewDownloader(cfg *config.Config, ffmpegAvailable bool) (*Downloader, error
 		logger.Logger.Printf("Error initializing database: %v", err)
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
-
-	// New processed post service setup
-	postRepo := repository.NewProcessedPostRepository(database.DB)
-	processedPostService := service.NewProcessedPostService(postRepo)
-
-	fileRepo := repository.NewFileRepository(database.DB)
-	fileService := service.NewFileService(fileRepo)
 
 	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
 	if err != nil {
@@ -114,19 +103,17 @@ func NewDownloader(cfg *config.Config, ffmpegAvailable bool) (*Downloader, error
 	)
 
 	return &Downloader{
-		database:             database,
-		fileService:          fileService,
-		ProcessedPostService: processedPostService,
-		authToken:            cfg.Account.AuthToken,
-		userAgent:            cfg.Account.UserAgent,
-		saveLocation:         cfg.Options.SaveLocation,
-		M3U8Download:         cfg.Options.M3U8Download,
-		headers:              fanslyHeaders,
-		limiter:              limiter,
-		progressBar:          bar,
-		ffmpegAvailable:      ffmpegAvailable,
-		cfg:                  cfg,
-		m3u8Semaphore:        semaphore.NewWeighted(2),
+		database:        database,
+		authToken:       cfg.Account.AuthToken,
+		userAgent:       cfg.Account.UserAgent,
+		saveLocation:    cfg.Options.SaveLocation,
+		M3U8Download:    cfg.Options.M3U8Download,
+		headers:         fanslyHeaders,
+		limiter:         limiter,
+		progressBar:     bar,
+		ffmpegAvailable: ffmpegAvailable,
+		cfg:             cfg,
+		m3u8Semaphore:   semaphore.NewWeighted(2),
 	}, nil
 }
 
@@ -195,7 +182,7 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 	skipFiles := make(map[string]bool, len(timelinePosts))
 	var postsToFetch []string
 	for _, post := range timelinePosts {
-		if d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(post.ID) {
+		if d.cfg.Options.SkipDownloadedPosts && d.database.PostExists(post.ID) {
 			skipFiles[post.ID] = true
 		} else {
 			postsToFetch = append(postsToFetch, post.ID)
@@ -246,7 +233,7 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 			if downloadFailed {
 				logger.Logger.Printf("[WARN] [%s] Post %s had failures, leaving unmarked for retry", modelName, post.ID)
 			} else {
-				err := d.ProcessedPostService.MarkPostAsProcessed(post.ID, modelName, post.Content, post.CreatedAt)
+				err := d.database.MarkPostAsProcessed(post.ID, modelName, post.Content, post.CreatedAt)
 				if err != nil {
 					logger.Logger.Printf("[ERROR] [%s] Failed to save post metadata %s: %v", modelName, post.ID, err)
 				}

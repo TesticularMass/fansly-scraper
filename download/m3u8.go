@@ -50,7 +50,6 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	}
 	defer d.m3u8Semaphore.Release(1)
 	cookies := GetM3U8Cookies(m3u8URL)
-	//baseURL, _ := utils.SplitURL(m3u8URL)
 
 	// Fetch M3U8 playlist
 	//log.Printf("Downloading M3U8 from URL: %s", m3u8URL)

@@ -34,7 +34,7 @@ func (d *Downloader) DownloadPostByID(ctx context.Context, postIdentifier string
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	if d.cfg.Options.SkipDownloadedPosts && d.ProcessedPostService.PostExists(postID) {
+	if d.cfg.Options.SkipDownloadedPosts && d.database.PostExists(postID) {
 		logger.Logger.Printf("Post %s has already been processed. Skipping.", postID)
 		return nil
 	}
@@ -84,6 +84,6 @@ func (d *Downloader) DownloadPostByID(ctx context.Context, postIdentifier string
 		return fmt.Errorf("one or more media items failed for post %s", postInfo.ID)
 	}
 
-	d.ProcessedPostService.MarkPostAsProcessed(postInfo.ID, modelName, postInfo.Content, postInfo.CreatedAt)
+	d.database.MarkPostAsProcessed(postInfo.ID, modelName, postInfo.Content, postInfo.CreatedAt)
 	return nil
 }

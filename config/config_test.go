@@ -80,6 +80,39 @@ save_location = "/tmp/downloads"
 	}
 }
 
+func TestEnsureConfigUpdatedKeepsExplicitValues(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	oldConfig := `[account]
+auth_token = "dummy_token"
+user_agent = "dummy_agent"
+
+[options]
+save_location = "/tmp/downloads"
+skip_previews = false
+
+[live_settings]
+vods_file_extension = ".ts"
+record_chat = false
+
+[notifications]
+enabled = true
+notify_on_live_start = false
+`
+	if err := os.WriteFile(configPath, []byte(oldConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureConfigUpdated(configPath); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Options.SkipPreviews || !cfg.Options.DownloadProfilePic || cfg.LiveSettings.RecordChat || cfg.LiveSettings.CheckInterval != 60 || cfg.Notifications.NotifyOnLiveStart {
+		t.Fatalf("skip_previews=%v download_profile_pic=%v record_chat=%v check_interval=%d notify_on_live_start=%v", cfg.Options.SkipPreviews, cfg.Options.DownloadProfilePic, cfg.LiveSettings.RecordChat, cfg.LiveSettings.CheckInterval, cfg.Notifications.NotifyOnLiveStart)
+	}
+}
+
 func TestMergeConfigs(t *testing.T) {
 	existing := CreateDefaultConfig()
 	existing.Account.AuthToken = "old-token"

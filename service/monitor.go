@@ -22,28 +22,25 @@ import (
 	"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/core"
 	"github.com/agnosto/fansly-scraper/db"
-	"github.com/agnosto/fansly-scraper/db/repository"
-	"github.com/agnosto/fansly-scraper/db/service"
 	"github.com/agnosto/fansly-scraper/logger"
 	"github.com/agnosto/fansly-scraper/notifications"
 	"github.com/agnosto/fansly-scraper/utils"
 )
 
 type MonitoringService struct {
-	activeMonitors       map[string]string
-	mu                   sync.Mutex
-	activeRecordings     map[string]bool
-	activeMonitoring     map[string]bool
-	storagePath          string
-	recordingsPath       string
-	stopChan             chan struct{}
-	shutdownOnce         sync.Once
-	logger               *log.Logger
-	isTUI                bool
-	notificationSvc      *notifications.NotificationService
-	chatRecorder         *ChatRecorder
-	fileService          *service.FileService
-	processedPostService *service.ProcessedPostService
+	activeMonitors   map[string]string
+	mu               sync.Mutex
+	activeRecordings map[string]bool
+	activeMonitoring map[string]bool
+	storagePath      string
+	recordingsPath   string
+	stopChan         chan struct{}
+	shutdownOnce     sync.Once
+	logger           *log.Logger
+	isTUI            bool
+	notificationSvc  *notifications.NotificationService
+	chatRecorder     *ChatRecorder
+	database         *db.Database
 }
 
 func (ms *MonitoringService) GetRecordingsPath() string {
@@ -67,33 +64,26 @@ func NewMonitoringService(storagePath string, logger *log.Logger) *MonitoringSer
 		cfg = config.CreateDefaultConfig()
 	}
 
-	var fileService *service.FileService
-	var processedPostService *service.ProcessedPostService
 	database, err := db.NewDatabase(cfg.Options.SaveLocation)
 	if err != nil {
 		logger.Printf("Error initializing database: %v", err)
-		// Continue with nil fileService, we'll check for nil before using
+		// Continue without a database; callers check for nil before using it.
 	} else {
-		fileRepo := repository.NewFileRepository(database.DB)
-		fileService = service.NewFileService(fileRepo)
-		postRepo := repository.NewProcessedPostRepository(database.DB)
-		processedPostService = service.NewProcessedPostService(postRepo)
 		logger.Printf("Database initialized successfully for monitoring service (%s)", database.Path)
 	}
 
 	mt := &MonitoringService{
-		activeMonitors:       make(map[string]string),
-		activeRecordings:     make(map[string]bool),
-		activeMonitoring:     make(map[string]bool),
-		storagePath:          storagePath,
-		recordingsPath:       filepath.Join(filepath.Dir(storagePath), "active_recordings"),
-		stopChan:             make(chan struct{}),
-		logger:               logger,
-		isTUI:                false,
-		notificationSvc:      notifications.NewNotificationService(cfg),
-		chatRecorder:         NewChatRecorder(logger),
-		fileService:          fileService,
-		processedPostService: processedPostService,
+		activeMonitors:   make(map[string]string),
+		activeRecordings: make(map[string]bool),
+		activeMonitoring: make(map[string]bool),
+		storagePath:      storagePath,
+		recordingsPath:   filepath.Join(filepath.Dir(storagePath), "active_recordings"),
+		stopChan:         make(chan struct{}),
+		logger:           logger,
+		isTUI:            false,
+		notificationSvc:  notifications.NewNotificationService(cfg),
+		chatRecorder:     NewChatRecorder(logger),
+		database:         database,
 	}
 
 	return mt
@@ -120,8 +110,8 @@ func (ms *MonitoringService) StartMonitoring() {
 }
 
 func (ms *MonitoringService) saveLiveRecording(modelName, filename, postID string) error {
-	if ms.fileService == nil {
-		return fmt.Errorf("file service not initialized")
+	if ms.database == nil {
+		return fmt.Errorf("database not initialized")
 	}
 
 	// Check if file exists
@@ -137,12 +127,12 @@ func (ms *MonitoringService) saveLiveRecording(modelName, filename, postID strin
 	}
 
 	ms.logger.Printf("Saving live recording to database: %s with hash %s", filename, hash)
-	return ms.fileService.SaveFile(modelName, hash, filename, "livestream", postID)
+	return ms.database.SaveFile(modelName, hash, filename, "livestream", postID)
 }
 
 func (ms *MonitoringService) saveContactSheet(modelName, filename, postID string) error {
-	if ms.fileService == nil {
-		return fmt.Errorf("file service not initialized")
+	if ms.database == nil {
+		return fmt.Errorf("database not initialized")
 	}
 
 	// Check if file exists
@@ -157,7 +147,7 @@ func (ms *MonitoringService) saveContactSheet(modelName, filename, postID string
 	}
 
 	ms.logger.Printf("Saving contact sheet to database: %s with hash %s", filename, hash)
-	return ms.fileService.SaveFile(modelName, hash, filename, "contact_sheet", postID)
+	return ms.database.SaveFile(modelName, hash, filename, "contact_sheet", postID)
 }
 
 func (ms *MonitoringService) loadState() {
@@ -589,16 +579,16 @@ func (ms *MonitoringService) startRecording(modelID, username, playbackUrl strin
 				}
 			}
 
-			if ms.processedPostService != nil {
+			if ms.database != nil {
 				ms.logger.Printf("Saving stream metadata to library for: %s", historyID)
-				ms.processedPostService.MarkPostAsProcessed(
+				ms.database.MarkPostAsProcessed(
 					historyID,
 					username,
 					streamData.Title,
 					time.Now().Unix(),
 				)
 			} else {
-				ms.logger.Printf("Skipping database entry for %s: processedPostService is nil", historyID)
+				ms.logger.Printf("Skipping database entry for %s: database is nil", historyID)
 			}
 
 			ms.notificationSvc.NotifyLiveEnd(username, modelID, finalFilename, contactSheetPath)

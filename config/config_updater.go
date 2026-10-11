@@ -66,177 +66,138 @@ func EnsureConfigExists(configPath string) error {
 
 // EnsureConfigUpdated checks if the config file has all the latest fields and updates it with defaults if needed.
 func EnsureConfigUpdated(configPath string) error {
-	// Read the raw TOML file to check which fields are actually present
 	var rawConfig map[string]any
-	_, err := toml.DecodeFile(configPath, &rawConfig)
+	metadata, err := toml.DecodeFile(configPath, &rawConfig)
 	if err != nil {
 		return err
 	}
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
-		// If loading fails, it might be an invalid format. We can't safely update it.
 		return err
 	}
-
-	// Create a pristine default config to source missing values from.
-	defaultConfig := CreateDefaultConfig()
-	isUpdated := false
+	defaults := CreateDefaultConfig()
+	updated := false
 
 	if reflect.DeepEqual(cfg.Options, OptionsConfig{}) {
-		cfg.Options = defaultConfig.Options
-		isUpdated = true
+		cfg.Options = defaults.Options
+		updated = true
 	} else {
-		// Check for specific fields added in later versions
 		if cfg.Options.SaveLocation == "" {
-			cfg.Options.SaveLocation = defaultConfig.Options.SaveLocation
-			isUpdated = true
+			cfg.Options.SaveLocation = defaults.Options.SaveLocation
+			updated = true
 		}
-
-		// Check if new fields exist in the raw TOML
-		if optionsMap, ok := rawConfig["options"].(map[string]any); ok {
-			if _, exists := optionsMap["skip_previews"]; !exists {
-				cfg.Options.SkipPreviews = defaultConfig.Options.SkipPreviews
-				isUpdated = true
-			}
-			if _, exists := optionsMap["use_content_as_filename"]; !exists {
-				cfg.Options.UseContentAsFilename = defaultConfig.Options.UseContentAsFilename
-				isUpdated = true
-			}
-			if _, exists := optionsMap["content_filename_template"]; !exists {
-				cfg.Options.ContentFilenameTemplate = defaultConfig.Options.ContentFilenameTemplate
-				isUpdated = true
-			}
-			if _, exists := optionsMap["download_media_type"]; !exists {
-				cfg.Options.DownloadMediaType = defaultConfig.Options.DownloadMediaType
-				isUpdated = true
-			}
-			if _, exists := optionsMap["skip_downloaded_posts"]; !exists {
-				cfg.Options.SkipDownloadedPosts = defaultConfig.Options.SkipDownloadedPosts
-				isUpdated = true
-			}
-			if _, exists := optionsMap["content_filename_length"]; !exists {
-				cfg.Options.ContentFilenameLength = defaultConfig.Options.ContentFilenameLength
-				isUpdated = true
-			}
-			if _, exists := optionsMap["date_format"]; !exists {
-				cfg.Options.DateFormat = defaultConfig.Options.DateFormat
-				isUpdated = true
-			}
-			if _, exists := optionsMap["download_profile_pic"]; !exists {
-				cfg.Options.DownloadProfilePic = defaultConfig.Options.DownloadProfilePic
-				isUpdated = true
-			}
-			if _, exist := optionsMap["post_limit"]; !exist {
-				cfg.Options.PostLimit = defaultConfig.Options.PostLimit
-				isUpdated = true
-			}
-			if _, exists := optionsMap["skip_long_videos"]; !exists {
-				cfg.Options.SkipLongVideos = defaultConfig.Options.SkipLongVideos
-				isUpdated = true
-			}
-			if _, exists := optionsMap["max_video_duration_seconds"]; !exists {
-				cfg.Options.MaxVideoDurationSeconds = defaultConfig.Options.MaxVideoDurationSeconds
-				isUpdated = true
-			}
-			if _, exists := optionsMap["apply_file_timestamps"]; !exists {
-				cfg.Options.ApplyFileTimestamps = defaultConfig.Options.ApplyFileTimestamps
-				isUpdated = true
-			}
-		} else {
-			// If options section doesn't exist at all, add the fields
-			cfg.Options.SkipPreviews = defaultConfig.Options.SkipPreviews
-			cfg.Options.UseContentAsFilename = defaultConfig.Options.UseContentAsFilename
-			cfg.Options.ContentFilenameTemplate = defaultConfig.Options.ContentFilenameTemplate
-			cfg.Options.DownloadMediaType = defaultConfig.Options.DownloadMediaType
-			cfg.Options.SkipDownloadedPosts = defaultConfig.Options.SkipDownloadedPosts
-			cfg.Options.ContentFilenameLength = defaultConfig.Options.ContentFilenameLength
-			cfg.Options.DateFormat = defaultConfig.Options.DateFormat
-			cfg.Options.DownloadProfilePic = defaultConfig.Options.DownloadProfilePic
-			cfg.Options.PostLimit = defaultConfig.Options.PostLimit
-			cfg.Options.SkipLongVideos = defaultConfig.Options.SkipLongVideos
-			cfg.Options.MaxVideoDurationSeconds = defaultConfig.Options.MaxVideoDurationSeconds
-			cfg.Options.ApplyFileTimestamps = defaultConfig.Options.ApplyFileTimestamps
-			isUpdated = true
+		if !metadata.IsDefined("options", "skip_previews") {
+			cfg.Options.SkipPreviews = defaults.Options.SkipPreviews
+			updated = true
+		}
+		if !metadata.IsDefined("options", "use_content_as_filename") {
+			cfg.Options.UseContentAsFilename = defaults.Options.UseContentAsFilename
+			updated = true
+		}
+		if !metadata.IsDefined("options", "content_filename_template") {
+			cfg.Options.ContentFilenameTemplate = defaults.Options.ContentFilenameTemplate
+			updated = true
+		}
+		if !metadata.IsDefined("options", "download_media_type") {
+			cfg.Options.DownloadMediaType = defaults.Options.DownloadMediaType
+			updated = true
+		}
+		if !metadata.IsDefined("options", "skip_downloaded_posts") {
+			cfg.Options.SkipDownloadedPosts = defaults.Options.SkipDownloadedPosts
+			updated = true
+		}
+		if !metadata.IsDefined("options", "content_filename_length") {
+			cfg.Options.ContentFilenameLength = defaults.Options.ContentFilenameLength
+			updated = true
+		}
+		if !metadata.IsDefined("options", "date_format") {
+			cfg.Options.DateFormat = defaults.Options.DateFormat
+			updated = true
+		}
+		if !metadata.IsDefined("options", "download_profile_pic") {
+			cfg.Options.DownloadProfilePic = defaults.Options.DownloadProfilePic
+			updated = true
+		}
+		if !metadata.IsDefined("options", "post_limit") {
+			cfg.Options.PostLimit = defaults.Options.PostLimit
+			updated = true
+		}
+		if !metadata.IsDefined("options", "skip_long_videos") {
+			cfg.Options.SkipLongVideos = defaults.Options.SkipLongVideos
+			updated = true
+		}
+		if !metadata.IsDefined("options", "max_video_duration_seconds") {
+			cfg.Options.MaxVideoDurationSeconds = defaults.Options.MaxVideoDurationSeconds
+			updated = true
+		}
+		if !metadata.IsDefined("options", "apply_file_timestamps") {
+			cfg.Options.ApplyFileTimestamps = defaults.Options.ApplyFileTimestamps
+			updated = true
 		}
 	}
 
-	// Use reflection to generically check for missing fields.
-	// This makes it easier to add new fields in the future.
 	if reflect.DeepEqual(cfg.Notifications, NotificationsConfig{}) {
-		cfg.Notifications = defaultConfig.Notifications
-		isUpdated = true
+		cfg.Notifications = defaults.Notifications
+		updated = true
 	} else {
-		// Check for specific fields added in later versions using raw TOML
-		if notificationsMap, ok := rawConfig["notifications"].(map[string]any); ok {
-			if _, exists := notificationsMap["notify_on_live_start"]; !exists {
-				cfg.Notifications.NotifyOnLiveStart = defaultConfig.Notifications.NotifyOnLiveStart
-				isUpdated = true
-			}
-			if _, exists := notificationsMap["notify_on_live_end"]; !exists {
-				cfg.Notifications.NotifyOnLiveEnd = defaultConfig.Notifications.NotifyOnLiveEnd
-				isUpdated = true
-			}
-
-			if _, exists := notificationsMap["send_contact_sheet_on_live_end"]; !exists {
-				cfg.Notifications.SendContactSheetOnLiveEnd = defaultConfig.Notifications.SendContactSheetOnLiveEnd
-				isUpdated = true
-			}
+		if !metadata.IsDefined("notifications", "notify_on_live_start") {
+			cfg.Notifications.NotifyOnLiveStart = defaults.Notifications.NotifyOnLiveStart
+			updated = true
+		}
+		if !metadata.IsDefined("notifications", "notify_on_live_end") {
+			cfg.Notifications.NotifyOnLiveEnd = defaults.Notifications.NotifyOnLiveEnd
+			updated = true
+		}
+		if !metadata.IsDefined("notifications", "send_contact_sheet_on_live_end") {
+			cfg.Notifications.SendContactSheetOnLiveEnd = defaults.Notifications.SendContactSheetOnLiveEnd
+			updated = true
 		}
 	}
 
 	if reflect.DeepEqual(cfg.LiveSettings, LiveSettingsConfig{}) {
-		cfg.LiveSettings = defaultConfig.LiveSettings
-		isUpdated = true
+		cfg.LiveSettings = defaults.LiveSettings
+		updated = true
 	} else {
-		// Check for specific fields added in later versions
 		if cfg.LiveSettings.VODsFileExtension == "" {
-			cfg.LiveSettings.VODsFileExtension = defaultConfig.LiveSettings.VODsFileExtension
-			isUpdated = true
+			cfg.LiveSettings.VODsFileExtension = defaults.LiveSettings.VODsFileExtension
+			updated = true
 		}
 		if cfg.LiveSettings.FilenameTemplate == "" {
-			cfg.LiveSettings.FilenameTemplate = defaultConfig.LiveSettings.FilenameTemplate
-			isUpdated = true
+			cfg.LiveSettings.FilenameTemplate = defaults.LiveSettings.FilenameTemplate
+			updated = true
 		}
 		if cfg.LiveSettings.DateFormat == "" {
-			cfg.LiveSettings.DateFormat = defaultConfig.LiveSettings.DateFormat
-			isUpdated = true
+			cfg.LiveSettings.DateFormat = defaults.LiveSettings.DateFormat
+			updated = true
 		}
-
-		// Check for RecordChat field in raw TOML
-		if liveSettingsMap, ok := rawConfig["live_settings"].(map[string]any); ok {
-			if _, exists := liveSettingsMap["record_chat"]; !exists {
-				cfg.LiveSettings.RecordChat = defaultConfig.LiveSettings.RecordChat
-				isUpdated = true
-			}
-
-			if _, exists := liveSettingsMap["ffmpeg_recording_options"]; !exists {
-				cfg.LiveSettings.FFmpegRecordingOptions = defaultConfig.LiveSettings.FFmpegRecordingOptions
-				isUpdated = true
-			}
-			if _, exists := liveSettingsMap["ffmpeg_conversion_options"]; !exists {
-				cfg.LiveSettings.FFmpegConversionOptions = defaultConfig.LiveSettings.FFmpegConversionOptions
-				isUpdated = true
-			}
-			if _, exists := liveSettingsMap["check_interval"]; !exists {
-				cfg.LiveSettings.CheckInterval = defaultConfig.LiveSettings.CheckInterval
-				isUpdated = true
-			}
+		if !metadata.IsDefined("live_settings", "record_chat") {
+			cfg.LiveSettings.RecordChat = defaults.LiveSettings.RecordChat
+			updated = true
+		}
+		if !metadata.IsDefined("live_settings", "ffmpeg_recording_options") {
+			cfg.LiveSettings.FFmpegRecordingOptions = defaults.LiveSettings.FFmpegRecordingOptions
+			updated = true
+		}
+		if !metadata.IsDefined("live_settings", "ffmpeg_conversion_options") {
+			cfg.LiveSettings.FFmpegConversionOptions = defaults.LiveSettings.FFmpegConversionOptions
+			updated = true
+		}
+		if !metadata.IsDefined("live_settings", "check_interval") {
+			cfg.LiveSettings.CheckInterval = defaults.LiveSettings.CheckInterval
+			updated = true
 		}
 	}
 
-	if isUpdated {
-		//log.Println("Config file has been updated with new default values.")
-		// Save the updated config. Use the simple SaveConfig which now just encodes.
-		file, err := os.Create(configPath)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		return toml.NewEncoder(file).Encode(cfg)
+	if !updated {
+		return nil
 	}
-
-	return nil
+	file, err := os.Create(configPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return toml.NewEncoder(file).Encode(cfg)
 }
 
 // MergeConfigs merges a new configuration into an existing one.

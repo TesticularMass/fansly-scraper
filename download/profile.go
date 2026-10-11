@@ -80,7 +80,6 @@ func (d *Downloader) processProfileImage(ctx context.Context, img *auth.ProfileI
 		return nil
 	}
 
-	//if d.fileService.FileExists(filePath) {
 	//	return nil
 	//}
 

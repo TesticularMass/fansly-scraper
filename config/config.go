@@ -92,24 +92,7 @@ func GetConfigPath() string {
 	if _, err := os.Stat(currentDirConfig); err == nil {
 		return currentDirConfig
 	}
-
-	var configDir string
-	var err error
-
-	if runtime.GOOS == "darwin" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal(err)
-		}
-		configDir = filepath.Join(homeDir, ".config")
-	} else {
-		configDir, err = os.UserConfigDir()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	return filepath.Join(configDir, "fansly-scraper", "config.toml")
+	return filepath.Join(GetConfigDir(), "config.toml")
 }
 
 func GetConfigDir() string {

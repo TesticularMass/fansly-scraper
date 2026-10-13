@@ -87,7 +87,43 @@ type Account struct {
 	DisplayName string `json:"displayName"`
 }
 
+var (
+	customConfigPath string
+	customConfigDir  string
+)
+
+// SetConfigPath overrides the config file path and its enclosing directory.
+func SetConfigPath(path string) {
+	if path == "" {
+		customConfigPath = ""
+		customConfigDir = ""
+		return
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+	customConfigPath = absPath
+	customConfigDir = filepath.Dir(absPath)
+}
+
+// SetProfile sets the active profile name, placing config in profiles/<name>/config.toml.
+func SetProfile(profile string) {
+	if profile == "" {
+		customConfigPath = ""
+		customConfigDir = ""
+		return
+	}
+	baseDir := getDefaultConfigDir()
+	profileDir := filepath.Join(baseDir, "profiles", profile)
+	customConfigDir = profileDir
+	customConfigPath = filepath.Join(profileDir, "config.toml")
+}
+
 func GetConfigPath() string {
+	if customConfigPath != "" {
+		return customConfigPath
+	}
 	currentDirConfig := "config.toml"
 	if _, err := os.Stat(currentDirConfig); err == nil {
 		return currentDirConfig
@@ -96,6 +132,13 @@ func GetConfigPath() string {
 }
 
 func GetConfigDir() string {
+	if customConfigDir != "" {
+		return customConfigDir
+	}
+	return getDefaultConfigDir()
+}
+
+func getDefaultConfigDir() string {
 	var configDir string
 	var err error
 

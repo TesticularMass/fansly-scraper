@@ -32,10 +32,15 @@ import (
 //var m3u8Semaphore = semaphore.NewWeighted(2) // Limit to 2 concurrent M3U8 downloads, shitop programming
 
 func GetM3U8Cookies(m3u8URL string) map[string]string {
+	u, err := url.Parse(m3u8URL)
+	if err != nil {
+		return map[string]string{}
+	}
+	q := u.Query()
 	return map[string]string{
-		"CloudFront-Key-Pair-Id": utils.GetQSValue(m3u8URL, "Key-Pair-Id"),
-		"CloudFront-Policy":      utils.GetQSValue(m3u8URL, "Policy"),
-		"CloudFront-Signature":   utils.GetQSValue(m3u8URL, "Signature"),
+		"CloudFront-Key-Pair-Id": q.Get("Key-Pair-Id"),
+		"CloudFront-Policy":      q.Get("Policy"),
+		"CloudFront-Signature":   q.Get("Signature"),
 	}
 }
 

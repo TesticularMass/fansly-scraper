@@ -81,9 +81,6 @@ func main() {
 			os.Exit(1)
 		}
 		return
-	case "service":
-		cmd.RunService()
-		return
 	case "monitor":
 		switch flags.MonitorCommand {
 		case "start":

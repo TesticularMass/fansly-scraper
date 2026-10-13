@@ -1,8 +1,10 @@
 package service
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	//"maps"
 	"strconv"
 
@@ -121,7 +123,7 @@ func (ms *MonitoringService) saveLiveRecording(modelName, filename, postID strin
 
 	// Calculate file hash
 	ms.logger.Printf("Calculating hash for live recording: %s", filename)
-	hash, err := utils.HashMediaFile(filename)
+	hash, err := hashFile(filename)
 	if err != nil {
 		return fmt.Errorf("error calculating file hash: %v", err)
 	}
@@ -141,13 +143,26 @@ func (ms *MonitoringService) saveContactSheet(modelName, filename, postID string
 	}
 
 	ms.logger.Printf("Calculating hash for contact sheet: %s", filename)
-	hash, err := utils.HashMediaFile(filename)
+	hash, err := hashFile(filename)
 	if err != nil {
 		return fmt.Errorf("error calculating contact sheet hash: %v", err)
 	}
 
 	ms.logger.Printf("Saving contact sheet to database: %s with hash %s", filename, hash)
 	return ms.database.SaveFile(modelName, hash, filename, "contact_sheet", postID)
+}
+
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 func (ms *MonitoringService) loadState() {

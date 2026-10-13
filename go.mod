@@ -12,7 +12,6 @@ require (
 	github.com/gen2brain/beeep v0.0.0-20240516210008-9c006672e7f4
 	github.com/glebarez/sqlite v1.11.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/kardianos/service v1.2.2
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/schollz/progressbar/v3 v3.14.4
 	golang.org/x/time v0.5.0

@@ -408,60 +408,62 @@ func (d *Downloader) generateFilename(bestMedia posts.MediaItem, modelName strin
 
 	// 3. Mode B: Content-Based Naming (Config: use_content_as_filename = true)
 
-	// Check if meaningful text content exists
-	hasTextContent := textContent != "" && textContent != "Purchases"
-
-	if hasTextContent {
-		// Define Date Format
-		dateFormat := d.cfg.Options.DateFormat
-		if dateFormat == "" {
-			dateFormat = "20060102"
-		}
-		dateStr := time.Unix(date, 0).Format(dateFormat)
-
-		// Sanitize and Limit Content Text
-		cleanContent := strings.ReplaceAll(textContent, "\n", " ")
-		runes := []rune(cleanContent)
-		charLimit := d.cfg.Options.ContentFilenameLength
-		if charLimit <= 0 {
-			charLimit = 50
-		}
-		if len(runes) > charLimit {
-			runes = runes[:charLimit]
-		}
-		cleanContent = string(runes)
-
-		// Get Template
-		template := d.cfg.Options.ContentFilenameTemplate
-		if template == "" {
-			template = "{date}-{content}_{index}"
-		}
-
-		// Replace Variables
-		// We allow {postId} and {mediaId} here so you can achieve custom ID formats via config if desired
-		r := strings.NewReplacer(
-			"{date}", dateStr,
-			"{content}", cleanContent,
-			"{index}", fmt.Sprintf("%d", index+1),
-			"{postId}", sourceID,
-			"{mediaId}", bestMedia.ID,
-			"{model_name}", modelName,
-		)
-
-		baseName := r.Replace(template)
-		return config.SanitizeFilename(baseName) + suffix + ext
+	// Define Date Format
+	dateFormat := d.cfg.Options.DateFormat
+	if dateFormat == "" {
+		dateFormat = "20060102"
 	}
-
-	// Fallback for Content Mode when NO text is present
-	// Defaults to Date_Model_MediaID_Index to ensure uniqueness
 	var dateStr string
 	if date > 0 {
-		dateStr = time.Unix(date, 0).Format("20060102")
+		dateStr = time.Unix(date, 0).Format(dateFormat)
 	} else {
-		dateStr = time.Now().Format("20060102")
+		dateStr = time.Now().Format(dateFormat)
 	}
 
-	baseName := fmt.Sprintf("%s_%s_%s_%d", dateStr, modelName, bestMedia.ID, index+1)
+	// Sanitize and Limit Content Text
+	cleanContent := strings.ReplaceAll(textContent, "\n", " ")
+	if cleanContent == "Purchases" {
+		cleanContent = ""
+	}
+	runes := []rune(cleanContent)
+	charLimit := d.cfg.Options.ContentFilenameLength
+	if charLimit <= 0 {
+		charLimit = 50
+	}
+	if len(runes) > charLimit {
+		runes = runes[:charLimit]
+	}
+	cleanContent = string(runes)
+
+	// Get Template
+	template := d.cfg.Options.ContentFilenameTemplate
+	if template == "" {
+		template = "{date}-{content}_{index}"
+	}
+
+	// If template has {content} but there is no caption text, clean up resulting separators or fallback cleanly
+	if cleanContent == "" && strings.Contains(template, "{content}") {
+		template = strings.ReplaceAll(template, "-{content}", "")
+		template = strings.ReplaceAll(template, "_{content}", "")
+		template = strings.ReplaceAll(template, "{content}_", "")
+		template = strings.ReplaceAll(template, "{content}-", "")
+		template = strings.ReplaceAll(template, "{content}", "")
+		if strings.TrimSpace(template) == "" {
+			template = "{date}_{model_name}_{mediaId}_{index}"
+		}
+	}
+
+	// Replace Variables
+	r := strings.NewReplacer(
+		"{date}", dateStr,
+		"{content}", cleanContent,
+		"{index}", fmt.Sprintf("%d", index+1),
+		"{postId}", sourceID,
+		"{mediaId}", bestMedia.ID,
+		"{model_name}", modelName,
+	)
+
+	baseName := r.Replace(template)
 	return config.SanitizeFilename(baseName) + suffix + ext
 }
 

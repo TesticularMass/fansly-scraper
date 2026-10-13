@@ -15,7 +15,6 @@ type Flags struct {
 	DownloadType   string
 	Version        bool
 	Monitor        string
-	Service        string
 	MonitorCommand string
 	PostID         string
 	RunDiagnosis   bool
@@ -23,6 +22,8 @@ type Flags struct {
 	DumpChatLog    bool
 	WallID         string
 	Limit          int
+	Profile        string
+	ConfigPath     string
 }
 
 type DiagnosisFlags struct {
@@ -62,7 +63,9 @@ func ParseFlags() (Flags, string) {
 	flag.StringVar(&flags.Monitor, "m", "", "Toggle monitoring for a model")
 	flag.StringVar(&flags.Monitor, "monitor", "", "Toggle monitoring for a model")
 
-	flag.StringVar(&flags.Service, "service", "", "Control the service: install, uninstall, start, stop, restart")
+	// Configuration / Profile flags
+	flag.StringVar(&flags.Profile, "profile", "", "Account profile name to use")
+	flag.StringVar(&flags.ConfigPath, "config", "", "Path to custom config file")
 
 	// Diagnosis flags
 	flag.BoolVar(&flags.RunDiagnosis, "diagnosis", false, "Run the diagnosis suite")
@@ -73,6 +76,12 @@ func ParseFlags() (Flags, string) {
 	flag.BoolVar(&flags.DiagnosisFlags.KeepTmp, "keep-tmp", false, "Do not delete the temporary download directory after diagnosis")
 
 	flag.Parse()
+
+	if flags.ConfigPath != "" {
+		config.SetConfigPath(flags.ConfigPath)
+	} else if flags.Profile != "" {
+		config.SetProfile(flags.Profile)
+	}
 
 	args := flag.Args()
 	var subcommand string
@@ -108,8 +117,9 @@ func customUsage() {
 
 	// Operational Options
 	fmt.Fprintf(os.Stderr, "Operational Options:\n")
+	fmt.Fprintf(os.Stderr, "      --profile <name>      Use a named account profile (stores config in profiles/<name>/).\n")
+	fmt.Fprintf(os.Stderr, "      --config <path>       Path to a specific config file.\n")
 	fmt.Fprintf(os.Stderr, "  -m, --monitor <user>      Toggle background monitoring for a model's stream.\n")
-	fmt.Fprintf(os.Stderr, "      --service <action>    Control service: install, uninstall, start, stop, restart (not yet implemented).\n")
 	fmt.Fprintf(os.Stderr, "  -v, --version             Display version information.\n")
 	fmt.Fprintf(os.Stderr, "  -h, --help                Show this help message.\n\n")
 

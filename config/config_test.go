@@ -151,3 +151,30 @@ func TestMergeConfigs(t *testing.T) {
 		t.Errorf("expected merged ApplyFileTimestamps to be true, got %v", merged.Options.ApplyFileTimestamps)
 	}
 }
+
+func TestSetProfileAndSetConfigPath(t *testing.T) {
+	// Reset after test
+	defer func() {
+		SetProfile("")
+		SetConfigPath("")
+	}()
+
+	SetProfile("vip_account")
+	path := GetConfigPath()
+	dir := GetConfigDir()
+	if filepath.Base(path) != "config.toml" {
+		t.Errorf("expected config.toml, got %s", filepath.Base(path))
+	}
+	if filepath.Base(dir) != "vip_account" {
+		t.Errorf("expected directory vip_account, got %s", filepath.Base(dir))
+	}
+
+	custom := filepath.Join(t.TempDir(), "custom_conf.toml")
+	SetConfigPath(custom)
+	if GetConfigPath() != custom {
+		t.Errorf("expected %s, got %s", custom, GetConfigPath())
+	}
+	if GetConfigDir() != filepath.Dir(custom) {
+		t.Errorf("expected %s, got %s", filepath.Dir(custom), GetConfigDir())
+	}
+}

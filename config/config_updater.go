@@ -1,16 +1,13 @@
 package config
 
 import (
-	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 
 	"github.com/BurntSushi/toml"
-	"github.com/agnosto/fansly-scraper/utils"
 )
 
 // VerifyConfigOnStartup runs all checks to ensure a valid config file exists and is updated.
@@ -49,17 +46,7 @@ func EnsureConfigExists(configPath string) error {
 
 		// Try to create a default config
 		defaultConfig := CreateDefaultConfig()
-		err = SaveConfig(defaultConfig)
-		if err == nil {
-			return nil // Successfully created default config
-		}
-		log.Printf("Failed to create default config: %v. Trying next method.", err)
-
-		// Last resort: try to download config from GitHub
-		err = downloadFile("https://raw.githubusercontent.com/agnosto/fansly-scraper/main/example-config.toml", configPath)
-		if err != nil {
-			return fmt.Errorf("all methods to create a config failed. Last error: %v", err)
-		}
+		return SaveConfig(defaultConfig)
 	}
 	return nil
 }
@@ -337,28 +324,6 @@ func copyFile(srcPath, dstPath string) error {
 	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, srcFile)
-	return err
-}
-
-// downloadFile is a simple utility to download a file from a URL.
-func downloadFile(url, filePath string) error {
-	resp, err := utils.HTTPClient.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	out, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
 	return err
 }
 

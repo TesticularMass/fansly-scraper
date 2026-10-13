@@ -18,7 +18,7 @@ func TestGenerateFilenameWithDateTemplate(t *testing.T) {
 	post := posts.Post{
 		ID:        "post999",
 		Content:   "Hello World",
-		CreatedAt: 1700000000,
+		CreatedAt: 1700000000000, // Fansly sends millisecond timestamps
 	}
 	media := posts.MediaItem{
 		ID: "media111",
@@ -34,7 +34,7 @@ func TestGenerateFilenameWithDateTemplate(t *testing.T) {
 	postEmpty := posts.Post{
 		ID:        "post999",
 		Content:   "",
-		CreatedAt: 1700000000,
+		CreatedAt: 1700000000000,
 	}
 	nameEmpty := d.generateFilename(media, "TestCreator", postEmpty, 0, false, ".mp4")
 	if nameEmpty == "" || nameEmpty[0] != '2' {

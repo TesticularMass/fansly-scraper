@@ -415,7 +415,7 @@ func (d *Downloader) generateFilename(bestMedia posts.MediaItem, modelName strin
 	}
 	var dateStr string
 	if date > 0 {
-		dateStr = time.Unix(date, 0).Format(dateFormat)
+		dateStr = parseUnixTimestamp(date).Format(dateFormat)
 	} else {
 		dateStr = time.Now().Format(dateFormat)
 	}

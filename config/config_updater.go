@@ -190,123 +190,46 @@ func EnsureConfigUpdated(configPath string) error {
 // MergeConfigs merges a new configuration into an existing one.
 // It prioritizes values from the new config but fills in missing/default values from the existing and default configs.
 func MergeConfigs(existing, new *Config) *Config {
-	result := &Config{}
-	defaultConfig := CreateDefaultConfig()
+	def := CreateDefaultConfig()
+	res := *existing
 
-	// Merge Account: Always take new values if they are not empty.
-	result.Account = existing.Account
-	if new.Account.AuthToken != "" {
-		result.Account.AuthToken = new.Account.AuthToken
-	}
-	if new.Account.UserAgent != "" {
-		result.Account.UserAgent = new.Account.UserAgent
-	}
+	// Overlay struct non-zero values and preserve defaults where zero
+	mergeStruct(&res.Account, new.Account, def.Account)
+	mergeStruct(&res.Options, new.Options, def.Options)
+	mergeStruct(&res.LiveSettings, new.LiveSettings, def.LiveSettings)
+	mergeStruct(&res.Notifications, new.Notifications, def.Notifications)
+	res.SecurityHeaders = new.SecurityHeaders
 
-	// Merge Options
-	result.Options = existing.Options
-	if new.Options.SaveLocation != "" {
-		result.Options.SaveLocation = new.Options.SaveLocation
-	}
-	result.Options.CheckUpdates = new.Options.CheckUpdates
-	result.Options.M3U8Download = new.Options.M3U8Download
-	result.Options.SkipPreviews = new.Options.SkipPreviews
-	result.Options.UseContentAsFilename = new.Options.UseContentAsFilename
-	if new.Options.ContentFilenameTemplate != "" {
-		result.Options.ContentFilenameTemplate = new.Options.ContentFilenameTemplate
-	} else if result.Options.ContentFilenameTemplate == "" {
-		result.Options.ContentFilenameTemplate = defaultConfig.Options.ContentFilenameTemplate
-	}
-	if new.Options.DownloadMediaType != "" {
-		result.Options.DownloadMediaType = new.Options.DownloadMediaType
-	} else if result.Options.DownloadMediaType == "" {
-		result.Options.DownloadMediaType = defaultConfig.Options.DownloadMediaType
-	}
-	result.Options.SkipDownloadedPosts = new.Options.SkipDownloadedPosts
-	result.Options.DownloadProfilePic = new.Options.DownloadProfilePic
+	return &res
+}
 
-	if new.Options.PostLimit != 0 {
-		result.Options.PostLimit = new.Options.PostLimit
-	} else {
-		result.Options.PostLimit = existing.Options.PostLimit
-	}
+func mergeStruct[T any](dst *T, src T, fallback T) {
+	dVal := reflect.ValueOf(dst).Elem()
+	sVal := reflect.ValueOf(src)
+	fVal := reflect.ValueOf(fallback)
 
-	result.Options.SkipLongVideos = new.Options.SkipLongVideos
-	if new.Options.MaxVideoDurationSeconds != 0 {
-		result.Options.MaxVideoDurationSeconds = new.Options.MaxVideoDurationSeconds
-	} else {
-		result.Options.MaxVideoDurationSeconds = existing.Options.MaxVideoDurationSeconds
-	}
-	result.Options.ApplyFileTimestamps = new.Options.ApplyFileTimestamps
+	for i := 0; i < sVal.NumField(); i++ {
+		sField := sVal.Field(i)
+		dField := dVal.Field(i)
+		fField := fVal.Field(i)
 
-	// Merge LiveSettings
-	result.LiveSettings = existing.LiveSettings
-	if new.LiveSettings.SaveLocation != "" {
-		result.LiveSettings.SaveLocation = new.LiveSettings.SaveLocation
-	}
-	if new.LiveSettings.VODsFileExtension != "" {
-		result.LiveSettings.VODsFileExtension = new.LiveSettings.VODsFileExtension
-	} else if result.LiveSettings.VODsFileExtension == "" {
-		result.LiveSettings.VODsFileExtension = defaultConfig.LiveSettings.VODsFileExtension
-	}
-	if new.LiveSettings.FilenameTemplate != "" {
-		result.LiveSettings.FilenameTemplate = new.LiveSettings.FilenameTemplate
-	} else if result.LiveSettings.FilenameTemplate == "" {
-		result.LiveSettings.FilenameTemplate = defaultConfig.LiveSettings.FilenameTemplate
-	}
-	if new.LiveSettings.DateFormat != "" {
-		result.LiveSettings.DateFormat = new.LiveSettings.DateFormat
-	} else if result.LiveSettings.DateFormat == "" {
-		result.LiveSettings.DateFormat = defaultConfig.LiveSettings.DateFormat
-	}
-
-	// For booleans, we can just assign the value from the new config,
-	// as it represents the most recent state.
-	result.LiveSettings.FFmpegConvert = new.LiveSettings.FFmpegConvert
-	result.LiveSettings.GenerateContactSheet = new.LiveSettings.GenerateContactSheet
-	result.LiveSettings.UseMTForContactSheet = new.LiveSettings.UseMTForContactSheet
-	result.LiveSettings.RecordChat = new.LiveSettings.RecordChat
-
-	if new.LiveSettings.FFmpegRecordingOptions != "" {
-		result.LiveSettings.FFmpegRecordingOptions = new.LiveSettings.FFmpegRecordingOptions
-	}
-	if new.LiveSettings.FFmpegConversionOptions != "" {
-		result.LiveSettings.FFmpegConversionOptions = new.LiveSettings.FFmpegConversionOptions
-	}
-
-	if new.LiveSettings.CheckInterval > 0 {
-		result.LiveSettings.CheckInterval = new.LiveSettings.CheckInterval
-	} else {
-		// If not set in new (0), use existing or default
-		if existing.LiveSettings.CheckInterval > 0 {
-			result.LiveSettings.CheckInterval = existing.LiveSettings.CheckInterval
-		} else {
-			result.LiveSettings.CheckInterval = 60
+		switch sField.Kind() {
+		case reflect.String:
+			if sField.String() != "" {
+				dField.SetString(sField.String())
+			} else if dField.String() == "" {
+				dField.SetString(fField.String())
+			}
+		case reflect.Int, reflect.Int64:
+			if sField.Int() != 0 {
+				dField.SetInt(sField.Int())
+			} else if dField.Int() == 0 {
+				dField.SetInt(fField.Int())
+			}
+		case reflect.Bool:
+			dField.SetBool(sField.Bool())
 		}
 	}
-
-	// Merge Notifications
-	result.Notifications = existing.Notifications
-	result.Notifications.Enabled = new.Notifications.Enabled
-	result.Notifications.SystemNotify = new.Notifications.SystemNotify
-	result.Notifications.NotifyOnLiveStart = new.Notifications.NotifyOnLiveStart
-	result.Notifications.NotifyOnLiveEnd = new.Notifications.NotifyOnLiveEnd
-	if new.Notifications.DiscordWebhook != "" {
-		result.Notifications.DiscordWebhook = new.Notifications.DiscordWebhook
-	}
-	if new.Notifications.DiscordMentionID != "" {
-		result.Notifications.DiscordMentionID = new.Notifications.DiscordMentionID
-	}
-	if new.Notifications.TelegramBotToken != "" {
-		result.Notifications.TelegramBotToken = new.Notifications.TelegramBotToken
-	}
-	if new.Notifications.TelegramChatID != "" {
-		result.Notifications.TelegramChatID = new.Notifications.TelegramChatID
-	}
-
-	// Security Headers are always taken from the new config.
-	result.SecurityHeaders = new.SecurityHeaders
-
-	return result
 }
 
 // copyFile is a simple utility to copy a file from a source to a destination.

@@ -40,8 +40,8 @@ func ParseFlags() (Flags, string) {
 	flag.Usage = customUsage
 
 	// Main operational flags
-	flag.StringVar(&flags.Username, "u", "", "Model username to download")
-	flag.StringVar(&flags.Username, "username", "", "Model username to download")
+	flag.StringVar(&flags.Username, "u", "", "Model username(s) to download (comma-separated)")
+	flag.StringVar(&flags.Username, "username", "", "Model username(s) to download (comma-separated)")
 
 	flag.StringVar(&flags.DownloadType, "d", "", "Download type: all, timeline, messages, or stories")
 	flag.StringVar(&flags.DownloadType, "download", "", "Download type: all, timeline, messages, or stories")
@@ -60,8 +60,8 @@ func ParseFlags() (Flags, string) {
 	flag.BoolVar(&flags.Version, "v", false, "Display version information")
 	flag.BoolVar(&flags.Version, "version", false, "Display version information")
 
-	flag.StringVar(&flags.Monitor, "m", "", "Toggle monitoring for a model")
-	flag.StringVar(&flags.Monitor, "monitor", "", "Toggle monitoring for a model")
+	flag.StringVar(&flags.Monitor, "m", "", "Toggle monitoring for model(s) (comma-separated)")
+	flag.StringVar(&flags.Monitor, "monitor", "", "Toggle monitoring for model(s) (comma-separated)")
 
 	// Configuration / Profile flags
 	flag.StringVar(&flags.Profile, "profile", "", "Account profile name to use")
@@ -106,7 +106,7 @@ func customUsage() {
 
 	// Scraping Options
 	fmt.Fprintf(os.Stderr, "Scraping Options:\n")
-	fmt.Fprintf(os.Stderr, "  -u, --username <user>     Model username to download.\n")
+	fmt.Fprintf(os.Stderr, "  -u, --username <user>     Model username(s) to download (comma-separated: user1,user2).\n")
 	fmt.Fprintf(os.Stderr, "  -d, --download <type>     Content type: 'all', 'timeline', 'messages', 'stories'.\n")
 	fmt.Fprintf(os.Stderr, "                            (Defaults to 'all', or 'timeline' if --wall is set)\n")
 	fmt.Fprintf(os.Stderr, "                            ('all' includes profile pics if enabled in config)\n")
@@ -119,7 +119,7 @@ func customUsage() {
 	fmt.Fprintf(os.Stderr, "Operational Options:\n")
 	fmt.Fprintf(os.Stderr, "      --profile <name>      Use a named account profile (stores config in profiles/<name>/).\n")
 	fmt.Fprintf(os.Stderr, "      --config <path>       Path to a specific config file.\n")
-	fmt.Fprintf(os.Stderr, "  -m, --monitor <user>      Toggle background monitoring for a model's stream.\n")
+	fmt.Fprintf(os.Stderr, "  -m, --monitor <user>      Toggle background monitoring for model(s) (comma-separated).\n")
 	fmt.Fprintf(os.Stderr, "  -v, --version             Display version information.\n")
 	fmt.Fprintf(os.Stderr, "  -h, --help                Show this help message.\n\n")
 

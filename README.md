@@ -60,6 +60,9 @@ From the main menu you can:
 # Download all content from a creator
 ./fansly-scraper -u {creator-name}
 
+# Download multiple creators in a single command
+./fansly-scraper -u creator1,creator2,creator3 -d all
+
 # Download specific content types
 ./fansly-scraper -u {creator-name} -d [all|timeline|messages|stories]
 

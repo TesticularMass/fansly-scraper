@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	//"flag"
@@ -152,16 +153,16 @@ func main() {
 		}
 
 		// Get Model ID
-		modelID, err := core.GetModelIDFromUsername(flags.Username)
-		if err != nil {
-			logger.Logger.Printf("Error getting model ID: %v", err)
-			os.Exit(1)
-		}
-
-		// Run Dump
-		if err := downloader.DumpChatLogs(context.Background(), modelID, flags.Username); err != nil {
-			logger.Logger.Printf("Error dumping chat logs: %v", err)
-			os.Exit(1)
+		users := parseUsernames(flags.Username)
+		for _, u := range users {
+			modelID, err := core.GetModelIDFromUsername(u)
+			if err != nil {
+				logger.Logger.Printf("Error getting model ID for %s: %v", u, err)
+				continue
+			}
+			if err := downloader.DumpChatLogs(context.Background(), modelID, u); err != nil {
+				logger.Logger.Printf("Error dumping chat logs for %s: %v", u, err)
+			}
 		}
 		return
 	}
@@ -181,8 +182,10 @@ func main() {
 	}
 
 	if flags.Username != "" && flags.DownloadType != "" {
-		// Pass flags.WallID to the function
-		runCLIMode(flags.Username, flags.DownloadType, downloader, flags.WallID)
+		users := parseUsernames(flags.Username)
+		for _, u := range users {
+			runCLIMode(u, flags.DownloadType, downloader, flags.WallID)
+		}
 		return
 	}
 
@@ -192,16 +195,19 @@ func main() {
 	)
 
 	if flags.Monitor != "" {
-		modelID, err := core.GetModelIDFromUsername(flags.Monitor)
-		if err != nil {
-			logger.Logger.Printf("Error getting model ID: %v", err)
-			os.Exit(1)
-		}
-		started := monitoringService.ToggleMonitoring(modelID, flags.Monitor)
-		if started {
-			fmt.Printf("Started monitoring for %s\n", flags.Monitor)
-		} else {
-			fmt.Printf("Stopped monitoring for %s\n", flags.Monitor)
+		monitors := parseUsernames(flags.Monitor)
+		for _, m := range monitors {
+			modelID, err := core.GetModelIDFromUsername(m)
+			if err != nil {
+				logger.Logger.Printf("Error getting model ID for %s: %v", m, err)
+				continue
+			}
+			started := monitoringService.ToggleMonitoring(modelID, m)
+			if started {
+				fmt.Printf("Started monitoring for %s\n", m)
+			} else {
+				fmt.Printf("Stopped monitoring for %s\n", m)
+			}
 		}
 		return
 	}
@@ -309,6 +315,18 @@ func runCLIMode(username string, downloadType string, downloader *download.Downl
 		logger.Logger.Printf("Invalid download type. Use 'all', 'timeline', or 'messages'")
 		os.Exit(1)
 	}
+}
+
+func parseUsernames(input string) []string {
+	parts := strings.Split(input, ",")
+	var res []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			res = append(res, p)
+		}
+	}
+	return res
 }
 
 func startMonitoring() {

@@ -422,7 +422,7 @@ func (d *Downloader) generateFilename(bestMedia posts.MediaItem, modelName strin
 
 	// Sanitize and Limit Content Text
 	cleanContent := strings.ReplaceAll(textContent, "\n", " ")
-	if cleanContent == "Purchases" {
+	if cleanContent == "Purchases" || strings.TrimSpace(config.SanitizeFilename(cleanContent)) == "empty_content" || strings.TrimSpace(config.SanitizeFilename(cleanContent)) == "" {
 		cleanContent = ""
 	}
 	runes := []rune(cleanContent)
@@ -448,6 +448,9 @@ func (d *Downloader) generateFilename(bestMedia posts.MediaItem, modelName strin
 		template = strings.ReplaceAll(template, "{content}_", "")
 		template = strings.ReplaceAll(template, "{content}-", "")
 		template = strings.ReplaceAll(template, "{content}", "")
+		if !strings.Contains(template, "{postId}") && !strings.Contains(template, "{mediaId}") {
+			template += "_{postId}"
+		}
 		if strings.TrimSpace(template) == "" {
 			template = "{date}_{model_name}_{mediaId}_{index}"
 		}
@@ -468,13 +471,7 @@ func (d *Downloader) generateFilename(bestMedia posts.MediaItem, modelName strin
 }
 
 func parseUnixTimestamp(ts int64) time.Time {
-	if ts <= 0 {
-		return time.Time{}
-	}
-	if ts > 1e11 {
-		return time.Unix(ts/1000, (ts%1000)*1000000)
-	}
-	return time.Unix(ts, 0)
+	return utils.ParseUnixTimestamp(ts)
 }
 
 func extractTimestamp(contentSource any, accountMedia posts.AccountMedia, item posts.MediaItem) time.Time {
@@ -546,14 +543,16 @@ func (d *Downloader) downloadSingleItem(ctx context.Context, accountMedia posts.
 	mainType := getMediaType(item.Mimetype)
 
 	processMediaItem := func(mediaItem posts.MediaItem) {
-		if len(mediaItem.Locations) > 0 {
+		if mediaItem.Mimetype == "application/vnd.apple.mpegurl" && (!d.M3U8Download || !d.ffmpegAvailable) {
+			// Skip m3u8 if m3u8 download is disabled or ffmpeg is not available
+		} else if len(mediaItem.Locations) > 0 {
 			mediaItems = append(mediaItems, mediaItem)
 		}
 
 		for _, variant := range mediaItem.Variants {
 			variantType := getMediaType(variant.Mimetype)
 
-			if variant.Mimetype == "application/vnd.apple.mpegurl" && !d.M3U8Download {
+			if variant.Mimetype == "application/vnd.apple.mpegurl" && (!d.M3U8Download || !d.ffmpegAvailable) {
 				continue
 			}
 
@@ -660,16 +659,15 @@ func (d *Downloader) downloadSingleItem(ctx context.Context, accountMedia posts.
 				d.progressBar.Describe(fmt.Sprintf("[yellow]File missing[reset], Redownloading %s", fileName))
 			} else {
 				d.progressBar.Describe(fmt.Sprintf("[red]File Exists[reset], Skipping %s", fileName))
-				d.progressBar.Add(1)
 				return nil
 			}
 		} else {
 			// Check disk and check if another goroutine is actively writing here
-			_, err := os.Stat(idealPath)
+			fi, err := os.Stat(idealPath)
 			_, isActive := activeDownloads.Load(idealPath)
 
 			// Orphan on disk (Not in DB, and NO OTHER thread is currently downloading it) -> Adopt
-			if err == nil && !isActive {
+			if err == nil && !isActive && fi.Size() > 0 {
 				d.progressBar.Describe(fmt.Sprintf("[yellow]No DB Record[reset], Adding %s", fileName))
 				hashString, err := d.hashExistingFile(idealPath)
 				if err != nil {
@@ -681,7 +679,6 @@ func (d *Downloader) downloadSingleItem(ctx context.Context, accountMedia posts.
 					logger.Logger.Printf("[ERROR] failed to save hash for existing file %s: %v", idealPath, err)
 					return fmt.Errorf("error saving hash for existing file: %v", err)
 				}
-				d.progressBar.Add(1)
 				return nil
 			} else {
 				// Completely new file (or currently colliding with an active download).
@@ -763,8 +760,10 @@ func (d *Downloader) downloadWithRetry(ctx context.Context, url string) (*http.R
 			backoff *= 2
 		}
 
-		if err := d.limiter.Wait(ctx); err != nil {
-			return nil, fmt.Errorf("rate limiter wait error: %v", err)
+		if d.limiter != nil {
+			if err := d.limiter.Wait(ctx); err != nil {
+				return nil, fmt.Errorf("rate limiter wait error: %v", err)
+			}
 		}
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -772,7 +771,9 @@ func (d *Downloader) downloadWithRetry(ctx context.Context, url string) (*http.R
 			return nil, fmt.Errorf("error creating request: %v", err)
 		}
 
-		d.headers.AddHeadersToRequest(req, true)
+		if d.headers != nil {
+			d.headers.AddHeadersToRequest(req, true)
+		}
 
 		if strings.HasSuffix(url, ".m3u8") {
 			req.Header.Add("Accept", "*/*")
@@ -831,15 +832,26 @@ func (d *Downloader) downloadRegularFile(ctx context.Context, url, filePath stri
 	// Update the description of the main bar
 	d.progressBar.Describe(fmt.Sprintf("[cyan]Downloading[reset] %s", filepath.Base(filePath)))
 
-	out, err := os.Create(filePath)
+	partPath := filePath + ".part"
+	out, err := os.Create(partPath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
 	hash := sha256.New()
 	_, err = io.Copy(io.MultiWriter(out, hash), resp.Body)
 	if err != nil {
+		out.Close()
+		os.Remove(partPath)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(partPath)
+		return err
+	}
+
+	if err := os.Rename(partPath, filePath); err != nil {
+		os.Remove(partPath)
 		return err
 	}
 
@@ -872,4 +884,29 @@ func (d *Downloader) Close() error {
 		return nil
 	}
 	return d.database.Close()
+}
+
+// Reload updates the downloader with new configuration settings.
+func (d *Downloader) Reload(cfg *config.Config) error {
+	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
+	if err != nil {
+		return err
+	}
+	if cfg.Options.SaveLocation != d.saveLocation {
+		database, err := db.NewDatabase(cfg.Options.SaveLocation)
+		if err != nil {
+			return err
+		}
+		if d.database != nil {
+			d.database.Close()
+		}
+		d.database = database
+	}
+	d.cfg = cfg
+	d.authToken = cfg.Account.AuthToken
+	d.userAgent = cfg.Account.UserAgent
+	d.saveLocation = cfg.Options.SaveLocation
+	d.M3U8Download = cfg.Options.M3U8Download
+	d.headers = fanslyHeaders
+	return nil
 }

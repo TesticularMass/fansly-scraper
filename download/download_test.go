@@ -1,12 +1,17 @@
 package download
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/agnosto/fansly-scraper/config"
+	"github.com/agnosto/fansly-scraper/db"
 	"github.com/agnosto/fansly-scraper/posts"
+	"github.com/schollz/progressbar/v3"
 )
 
 func TestParseUnixTimestamp(t *testing.T) {
@@ -117,5 +122,48 @@ func TestApplyFileTimestamp(t *testing.T) {
 	// Compare Unix timestamps to avoid sub-second / OS precision discrepancies
 	if info.ModTime().Unix() != targetTime.Unix() {
 		t.Errorf("expected mod time unix %d, got %d", targetTime.Unix(), info.ModTime().Unix())
+	}
+}
+
+func TestEmptyOrphanNotAdopted(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.NewDatabase(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	cfg := config.CreateDefaultConfig()
+	cfg.Options.SaveLocation = tempDir
+	d := &Downloader{
+		cfg:          cfg,
+		database:     database,
+		saveLocation: tempDir,
+		progressBar:  progressbar.NewOptions(-1, progressbar.OptionSetWriter(io.Discard)),
+	}
+
+	baseDir := filepath.Join(tempDir, "model", "timeline")
+	if err := os.MkdirAll(filepath.Join(baseDir, "images"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an empty (0-byte) partial file at ideal path
+	filePath := filepath.Join(baseDir, "images", "123_01_media1.jpg")
+	if err := os.WriteFile(filePath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	post := posts.Post{ID: "123", CreatedAt: 1785342602}
+	item := posts.MediaItem{
+		ID:       "media1",
+		Mimetype: "image/jpeg",
+		Locations: []posts.Location{{Location: "https://invalid.example.com/photo.jpg"}},
+	}
+
+	_ = d.downloadSingleItem(context.Background(), posts.AccountMedia{ID: "am1"}, item, baseDir, "model", false, post, 0, false)
+
+	// 0-byte orphan should not have been adopted into DB
+	if database.FileExists(filePath) {
+		t.Errorf("0-byte orphan file was unexpectedly adopted into database: %s", filePath)
 	}
 }

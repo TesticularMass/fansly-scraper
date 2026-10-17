@@ -158,16 +158,16 @@ func (m *ConfigWizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.message = "Setup cancelled."
 				return m, tea.Quit
-			case "a":
+			case "ctrl+a":
 				if !m.autoActive {
 					m.message = "Starting browser auto-capture..."
 					m.waiting = true
 					return m, m.startAutoCaptureCmd()
 				}
-			case "o":
+			case "ctrl+o":
 				_ = openURL("https://fansly.com/")
 				return m, nil
-			case "c":
+			case "ctrl+s":
 				if m.snippet != "" {
 					if err := clipboard.WriteAll(m.snippet); err != nil {
 						m.message = "Failed to copy snippet to clipboard."
@@ -181,11 +181,15 @@ func (m *ConfigWizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = 1
 				}
 				if m.cursor < len(m.inputs)-1 {
+					m.inputs[m.cursor].Blur()
 					m.cursor++
 					m.inputs[m.cursor].Focus()
 					return m, nil
 				}
-				cfg := config.CreateDefaultConfig()
+				cfg, err := config.LoadConfig(config.GetConfigPath())
+				if err != nil {
+					cfg = config.CreateDefaultConfig()
+				}
 				cfg.Options.SaveLocation = filepath.Clean(m.inputs[0].Value())
 				cfg.Account.UserAgent = m.inputs[1].Value()
 				cfg.Account.AuthToken = m.inputs[2].Value()
@@ -276,11 +280,11 @@ func (m *ConfigWizardModel) View() string {
 	case wizardStepLogin:
 		b.WriteString("First-time setup: login\n\n")
 		b.WriteString("Save location: " + m.inputs[0].Value() + "\n\n")
-		b.WriteString("Auto login (recommended): press 'a' to start capture.\n")
+		b.WriteString("Auto login (recommended): press 'ctrl+a' to start capture.\n")
 		if m.autoActive {
 			b.WriteString(fmt.Sprintf("Listening on http://127.0.0.1:%d/capture\n", m.autoPort))
-			b.WriteString("- Press 'o' to open fansly.com in your browser.\n")
-			b.WriteString("- Press 'c' to copy the capture snippet to clipboard, then paste in DevTools Console and press Enter.\n")
+			b.WriteString("- Press 'ctrl+o' to open fansly.com in your browser.\n")
+			b.WriteString("- Press 'ctrl+s' to copy the capture snippet to clipboard, then paste in DevTools Console and press Enter.\n")
 			if m.snippet != "" {
 				preview := m.snippet
 				if len(preview) > 120 {

@@ -47,4 +47,16 @@ func TestLibraryOperations(t *testing.T) {
 	if !database.PostExists("post") || post.Content != "new" || post.PostCreatedAt.Unix() != 200 {
 		t.Fatalf("post upsert failed: %+v", post)
 	}
+
+	// Test millisecond timestamps
+	if err := database.MarkPostAsProcessed("post_ms", "model", "content", 1700000000000); err != nil {
+		t.Fatal(err)
+	}
+	var postMS models.ProcessedPost
+	if err := database.DB.Where("post_id = ?", "post_ms").First(&postMS).Error; err != nil {
+		t.Fatal(err)
+	}
+	if postMS.PostCreatedAt.Unix() != 1700000000 {
+		t.Fatalf("millisecond timestamp was not converted: got %v", postMS.PostCreatedAt.Unix())
+	}
 }

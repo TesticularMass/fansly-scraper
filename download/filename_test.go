@@ -40,4 +40,26 @@ func TestGenerateFilenameWithDateTemplate(t *testing.T) {
 	if nameEmpty == "" || nameEmpty[0] != '2' {
 		t.Fatalf("unexpected filename for empty content: %s", nameEmpty)
 	}
+
+	// Test that empty captions on the same day for different posts do not collide
+	postEmpty2 := posts.Post{
+		ID:        "post888",
+		Content:   "",
+		CreatedAt: 1700000000000,
+	}
+	nameEmpty2 := d.generateFilename(media, "TestCreator", postEmpty2, 0, false, ".mp4")
+	if nameEmpty == nameEmpty2 {
+		t.Fatalf("filenames collided for empty content across different posts: %s == %s", nameEmpty, nameEmpty2)
+	}
+
+	// Test unicode caption preservation
+	postUnicode := posts.Post{
+		ID:        "post777",
+		Content:   "日本語",
+		CreatedAt: 1700000000000,
+	}
+	nameUnicode := d.generateFilename(media, "TestCreator", postUnicode, 0, false, ".mp4")
+	if nameUnicode == nameEmpty {
+		t.Fatalf("unicode caption unexpectedly collided with empty content: %s", nameUnicode)
+	}
 }

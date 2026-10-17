@@ -225,11 +225,13 @@ func (ds *DiagnosisSuite) testPost() {
 	}
 
 	// Get creator username from the post data itself
+	var creatorUsername string
 	creatorDetails, err := auth.GetAccountDetails([]string{postInfo.AccountId}, ds.fanslyHeaders)
 	if err != nil || len(creatorDetails) == 0 {
 		ds.log(fmt.Sprintf(" - WARN: Could not get creator details for account ID %s: %v", postInfo.AccountId, err))
+	} else {
+		creatorUsername = creatorDetails[0].Username
 	}
-	creatorUsername := creatorDetails[0].Username
 	ds.log(fmt.Sprintf(" - INFO: Post belongs to creator: %s (Account ID: %s)", creatorUsername, postInfo.AccountId))
 
 	// This will now correctly report 6

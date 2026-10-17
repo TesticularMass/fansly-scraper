@@ -361,22 +361,19 @@ func GuessCheckKey(mainJSPattern, checkKeyPattern, userAgent string) (string, er
 }
 
 func (f *FanslyHeaders) RefreshSecurityHeaders() error {
-	var err error
-
-	f.DeviceID, err = GetDeviceID()
+	deviceID, err := GetDeviceID()
 	if err != nil {
 		return err
 	}
 
-	f.SessionID, err = GetSessionID(f.AuthToken)
+	sessionID, err := GetSessionID(f.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	err = f.SetCheckKey()
-	if err != nil {
-		return err
-	}
+	f.DeviceID = deviceID
+	f.SessionID = sessionID
+	_ = f.SetCheckKey()
 
 	// Update the config
 	f.Config.SecurityHeaders.DeviceID = f.DeviceID

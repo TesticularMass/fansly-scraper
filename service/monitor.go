@@ -291,8 +291,6 @@ func (ms *MonitoringService) monitorModel(modelID, username string) {
 					printColoredMessage(fmt.Sprintf("%s is live. Attempting to start recording.", username), true)
 				}
 				ms.startRecording(modelID, username, playbackUrl)
-
-				continue
 			} else if !ms.isTUI {
 				fmt.Printf("%s is already being recorded\n", username)
 			}
@@ -456,9 +454,8 @@ func (ms *MonitoringService) startRecording(modelID, username, playbackUrl strin
 		// Reconnect flags are input protocol options and must precede -i;
 		// after -i they attach to the file output and are silently ignored.
 		cmdArgs = []string{
-			"-reconnect", "1", "-reconnect_at_eof", "1",
+			"-reconnect", "1",
 			"-reconnect_streamed", "1", "-reconnect_delay_max", "300",
-			"-rtmp_live", "live",
 			"-i", playbackUrl,
 			"-c", "copy",
 			"-movflags", "use_metadata_tags", "-map_metadata", "0",
@@ -475,6 +472,11 @@ func (ms *MonitoringService) startRecording(modelID, username, playbackUrl strin
 
 	if err := cmd.Start(); err != nil {
 		ms.logger.Printf("Error starting FFmpeg for %s: %v", username, err)
+		if ms.chatRecorder != nil && ms.chatRecorder.IsRecording(modelID) {
+			if err := ms.chatRecorder.StopRecording(modelID); err != nil {
+				ms.logger.Printf("Error stopping chat recording for %s: %v", username, err)
+			}
+		}
 		return
 	}
 
@@ -649,7 +651,7 @@ func (ms *MonitoringService) generateContactSheet(mp4Filename string) error {
 		ms.logger.Printf("Error loading config, using defaults: %v", err)
 		cfg = config.CreateDefaultConfig()
 	}
-	contactSheetFilename := strings.TrimSuffix(mp4Filename, ".mp4") + "_contact_sheet.jpg"
+	contactSheetFilename := strings.TrimSuffix(mp4Filename, filepath.Ext(mp4Filename)) + "_contact_sheet.jpg"
 
 	if cfg.LiveSettings.UseMTForContactSheet {
 		ms.logger.Printf("Using MT for contact sheet generation")

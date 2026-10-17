@@ -2,10 +2,10 @@ package db
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/agnosto/fansly-scraper/db/models"
 	"github.com/agnosto/fansly-scraper/logger"
+	"github.com/agnosto/fansly-scraper/utils"
 	"gorm.io/gorm/clause"
 )
 
@@ -31,7 +31,7 @@ func (d *Database) MarkPostAsProcessed(postID, modelUsername, content string, po
 	post := &models.ProcessedPost{
 		PostID: postID, ModelUsername: modelUsername, Content: content,
 		Link:          fmt.Sprintf("https://fansly.com/post/%s", postID),
-		PostCreatedAt: time.Unix(postCreatedAt, 0),
+		PostCreatedAt: utils.ParseUnixTimestamp(postCreatedAt),
 	}
 	return d.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "post_id"}},

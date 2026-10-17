@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/agnosto/fansly-scraper/auth"
@@ -221,34 +222,51 @@ func getMessageBatchWithMedia(groupID, cursor string, fanslyHeaders *headers.Fan
 	var messagesWithMedia []MessageWithMedia
 
 	for _, msg := range msgResp.Response.Messages {
-		mediaIDsForThisMessage := make(map[string]struct{})
+		var orderedIDs []string
+		seenIDs := make(map[string]bool)
 		for _, attachment := range msg.Attachments {
 			if attachment.ContentType == 1 { // Single media
-				mediaIDsForThisMessage[attachment.ContentID] = struct{}{}
+				if !seenIDs[attachment.ContentID] {
+					orderedIDs = append(orderedIDs, attachment.ContentID)
+					seenIDs[attachment.ContentID] = true
+				}
 			} else if attachment.ContentType == 2 { // Bundle
 				if bundle, ok := bundleMap[attachment.ContentID]; ok {
-					for _, mediaID := range bundle.AccountMediaIDs {
-						mediaIDsForThisMessage[mediaID] = struct{}{}
+					if len(bundle.BundleContent) > 0 {
+						// Sort bundle content by 'Pos' (Position) to ensure correct order
+						bundleContent := make([]struct {
+							AccountMediaID string `json:"accountMediaId"`
+							Pos            int    `json:"pos"`
+						}, len(bundle.BundleContent))
+						copy(bundleContent, bundle.BundleContent)
+						sort.Slice(bundleContent, func(i, j int) bool {
+							return bundleContent[i].Pos < bundleContent[j].Pos
+						})
+						for _, item := range bundleContent {
+							if !seenIDs[item.AccountMediaID] {
+								orderedIDs = append(orderedIDs, item.AccountMediaID)
+								seenIDs[item.AccountMediaID] = true
+							}
+						}
+					} else {
+						for _, mediaID := range bundle.AccountMediaIDs {
+							if !seenIDs[mediaID] {
+								orderedIDs = append(orderedIDs, mediaID)
+								seenIDs[mediaID] = true
+							}
+						}
 					}
 				}
 			}
 		}
 
-		if len(mediaIDsForThisMessage) == 0 {
+		if len(orderedIDs) == 0 {
 			continue // Skip messages with no media
 		}
 
-		var finalMediaItems []AccountMedia
 		var mediaToFetch []string
-		processedIDs := make(map[string]bool)
-
-		for id := range mediaIDsForThisMessage {
-			if media, ok := mediaMap[id]; ok {
-				if !processedIDs[id] {
-					finalMediaItems = append(finalMediaItems, media)
-					processedIDs[id] = true
-				}
-			} else {
+		for _, id := range orderedIDs {
+			if _, ok := mediaMap[id]; !ok {
 				mediaToFetch = append(mediaToFetch, id)
 			}
 		}
@@ -262,11 +280,15 @@ func getMessageBatchWithMedia(groupID, cursor string, fanslyHeaders *headers.Fan
 				logger.Logger.Printf("[WARN] Failed to fetch some bundled media items for message %s: %v", msg.ID, err)
 			} else {
 				for _, media := range fetchedMedia {
-					if !processedIDs[media.ID] {
-						finalMediaItems = append(finalMediaItems, media)
-						processedIDs[media.ID] = true
-					}
+					mediaMap[media.ID] = media
 				}
+			}
+		}
+
+		var finalMediaItems []AccountMedia
+		for _, id := range orderedIDs {
+			if media, ok := mediaMap[id]; ok {
+				finalMediaItems = append(finalMediaItems, media)
 			}
 		}
 

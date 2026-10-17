@@ -43,6 +43,7 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+.claude/settings.local.json
 *.swp
 *.swo
 *~

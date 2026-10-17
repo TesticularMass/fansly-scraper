@@ -1,153 +1,160 @@
 # Fansly Scraper
 
-> [!WARNING]
-> **‼️ Windows Defender False Positive** (literally no idea why or where this came from)
->
-> The Windows executable of this program is frequently being flagged as **`Trojan:Script/Wacatac.B!ml`** by Windows Defender and other AV. This is a **false positive**.
->
-> **Why is this happening?**
-> The `!ml` in the detection name means it was flagged by a Machine Learning model, not a human. Because this is an unsigned, open-source scraper tool that makes many internet requests, the automated system incorrectly flags it as suspicious. This is a common issue for many Go and Rust-based command-line tools.
->
-> **Recommended Solution - Install via Go (should hopefully bypass AV issues):**
-> ```bash
-> GOPROXY=direct go install github.com/TesticularMass/fansly-scraper/cmd/fansly-scraper@latest
-> ```
->
-> **What you can do:**
-> 1.  **Trust the program:** You can temporarily disable Windows Defender to download and run the program, and then add it as an exception.
-> 2.  **Build from source:** If you have Go installed, you can build it yourself. The program is not flagged when you compile it locally or install via go.
->
-> The code is fully open-source for you to inspect. It is safe to use. but I understand if the AV warnings are concerning.
-
-A simple all in one tool to download and monitor content from Fansly creators.
-
-> **⚠️ Currently in development** - Some features may not work perfectly. See [known issues](#known-issues) below.
-
+A command-line and interactive terminal tool for downloading Fansly content and monitoring livestreams. This fork includes account profiles, downloads from multiple creators, chat exports, and configurable filenames.
 
 ## Requirements
 
-- **Optional but highly recommended**: [ffmpeg](https://ffmpeg.org/) for livestream recording and saving higher quality videos. Follow [this guide](https://phoenixnap.com/kb/ffmpeg-windows) for installing to system path on windows.
-- **Optional**: [mt](https://github.com/mutschler/mt) for better contact sheets
+- Go 1.25 or newer and Git to build from source.
+- A Fansly account with access to the content you want to download.
+- `ffmpeg` on your `PATH` for livestream recording and combining segmented videos; `ffprobe` for built-in contact sheets.
+- Optional: `mt` for contact sheets when `use_mt_for_contact_sheet` is enabled.
 
 ## Quick Start
 
-### 1. Download
-- **Install via Go**:
+### 1. Build this fork
+
 ```bash
-GOPROXY=direct go install github.com/TesticularMass/fansly-scraper/cmd/fansly-scraper@latest
+git clone https://github.com/TesticularMass/fansly-scraper.git
+cd fansly-scraper
+go build -v -ldflags "-w -s" -o fansly-scraper ./cmd/fansly-scraper
 ```
 
-### 2. Run the Program
+The module still uses the upstream path, `github.com/agnosto/fansly-scraper`. Build from the cloned repository to use this fork's code.
+
+On Windows, use `-o fansly-scraper.exe` and run `.\fansly-scraper.exe` in the examples below.
+
+### 2. Run the setup wizard
+
 ```bash
 ./fansly-scraper
 ```
 
-On first run, the setup wizard helps you configure everything. Press 'a' to use auto login: it opens Fansly and provides a one‑line snippet to paste in DevTools Console. Your token and user‑agent are captured automatically and saved to the config.
+On first run, the setup wizard helps configure your save location and authentication. Press `a` for auto login: it opens Fansly and provides a snippet to paste into the browser's DevTools Console. Your token and user-agent are captured and saved to the configuration.
 
-## Basic Usage
+## Usage
 
-### Interactive Mode (Recommended for beginners)
+### Interactive mode
+
+Run without arguments to open the terminal interface. Its menus let you:
+
+- Download a creator's timeline, messages, stories, or individual posts.
+- Download purchased content.
+- Select creators for livestream monitoring.
+- Like or unlike a creator's posts.
+- Run the setup wizard, edit configuration, or reset it.
+
+### Command-line downloads
+
+Replace `creator`, IDs, and paths with your own values.
+
 ```bash
-./fansly-scraper
-```
+# Download all supported content types for a creator
+./fansly-scraper -u creator
 
-From the main menu you can:
-- Run setup wizard (choose save location, auto login)
-- Reset configuration (restore defaults, re-run wizard)
-
-### Command Line Mode
-```bash
-# Download all content from a creator
-./fansly-scraper -u {creator-name}
-
-# Download multiple creators in a single command
+# Download multiple creators
 ./fansly-scraper -u creator1,creator2,creator3 -d all
 
-# Download specific content types
-./fansly-scraper -u {creator-name} -d [all|timeline|messages|stories]
+# Download one content type: timeline, messages, or stories
+./fansly-scraper -u creator -d messages
 
-# Download a specific Wall (timeline)
-./fansly-scraper -u {creator-name} -w {wall-id}
+# Download a specific wall (defaults to timeline only)
+./fansly-scraper -u creator -w 793928278367805440
+
+# Include messages and stories alongside a specific wall
+./fansly-scraper -u creator -w 793928278367805440 -d all
 
 # Download a single post by ID or URL
-./fansly-scraper -p {post-id-or-url}
+./fansly-scraper -p 837364635748286464
 
-# Limit download to the X most recent items
-./fansly-scraper -u {creator-name} -l 10
+# Override the configured post limit
+./fansly-scraper -u creator -l 10
 
-# Export text chat logs to JSON
-./fansly-scraper -u {creator-name} --dump-chat-log
+# Export text chat history to JSON
+./fansly-scraper -u creator1,creator2 --dump-chat-log
 
-# Use multiple accounts / profiles
-./fansly-scraper --profile account1 -u {creator-name}
-./fansly-scraper --profile account2 -u {creator-name}
+# Use a named account profile or custom configuration
+./fansly-scraper --profile account1 -u creator
+./fansly-scraper --config /path/to/config.toml -u creator
 
-# Use a custom config file
-./fansly-scraper --config /path/to/custom-config.toml -u {creator-name}
-
-# Monitor for live streams
-./fansly-scraper -m {creator-name}
-
-# Start/stop monitoring
-./fansly-scraper monitor [start|stop]
-
-# Run diagnosis & environment checks
+# Show all options or run configuration/API diagnostics
+./fansly-scraper --help
 ./fansly-scraper --diagnosis
 ```
 
-**Note**: Live monitoring requires keeping your terminal session active. To run monitoring in the background, consider using terminal multiplexers like [tmux](https://github.com/tmux/tmux/wiki) or [zellij](https://github.com/zellij-org/zellij) on Linux/WSL. Starting from v0.6.3, you can monitor additional creators by running `-m creator` in separate terminal instances without restarting the existing monitor process.
+`-d all` includes timeline, messages, and stories, plus profile images when enabled in configuration. Purchased content has a separate interactive menu option. Place flags before subcommands such as `monitor`.
 
-### Update the Program
+### Livestream monitoring
+
 ```bash
-./fansly-scraper update
+# Toggle creators in the saved monitoring list
+./fansly-scraper -m creator1,creator2
+
+# Run the monitoring process in the current terminal
+./fansly-scraper monitor start
+
+# Stop it from another terminal
+./fansly-scraper monitor stop
 ```
+
+Repeating `-m creator` removes that creator from the monitoring list. Keep the monitoring process running, or use a persistent terminal session such as tmux or Zellij. You can toggle additional creators from another terminal while it runs. When using a profile, supply the same `--profile` before `monitor start`, `monitor stop`, and `-m`.
 
 ## Configuration & Storage
 
-Detailed options and configuration parameters are documented in [config.md](./config.md).
+See [config.md](./config.md) for detailed options and [example-config.toml](./example-config.toml) for a configuration example.
 
-### Configuration & Database Locations
-- **Config file**: `~/.config/fansly-scraper/config.toml` (Windows: `%APPDATA%\fansly-scraper\config.toml`).
-- **Database file**: `~/.config/fansly-scraper/downloads.db`. The database is stored next to the configuration to prevent SQLite advisory lock failures on network/SMB shares.
-- **Profiles**: When running with `--profile <name>`, both configuration and database are stored inside `~/.config/fansly-scraper/profiles/<name>/`.
+Default configuration directories:
 
-### Custom Post Date Filename Templates
-Output file names can be customized in `config.toml` under `[options]`:
+| Platform | Directory |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/fansly-scraper`, or `~/.config/fansly-scraper` when unset |
+| macOS | `~/.config/fansly-scraper` |
+| Windows | `%APPDATA%\fansly-scraper` |
+
+- **Configuration:** `config.toml` in the configuration directory. A `config.toml` in the working directory takes precedence when neither `--config` nor `--profile` is supplied.
+- **Database:** `downloads.db` normally lives in the configuration directory so media can be saved on a network share without placing SQLite there. An older database in the download location is imported when needed, with the original kept as `downloads.db.bak`. If migration fails or the configuration directory is not writable, the application can fall back to the download location.
+- **Profiles:** `--profile account1` keeps configuration, database, and monitoring state under `profiles/account1/` in the default configuration directory.
+- **Custom paths:** `--config /path/to/config.toml` takes precedence over `--profile` and uses the supplied file's directory for database and monitoring state. A working-directory config discovered automatically does not change the database directory.
+
+### Post filename templates
+
 ```toml
 [options]
 use_content_as_filename = true
 date_format = "2006-01-02"
 content_filename_template = "{date}_{model_name}_{postId}_{index}"
 ```
-Available template placeholders: `{date}`, `{model_name}`, `{postId}`, `{mediaId}`, `{index}`, `{content}`.
 
-## Build from source
+Available placeholders: `{date}`, `{model_name}`, `{postId}`, `{mediaId}`, `{index}`, and `{content}`. Date formats use Go's reference date, as in the example above.
+
+## Updating This Fork
+
+From your clone, pull and rebuild:
+
 ```bash
-git clone https://github.com/TesticularMass/fansly-scraper && cd fansly-scraper
+git pull --ff-only
 go build -v -ldflags "-w -s" -o fansly-scraper ./cmd/fansly-scraper
 ```
 
-## Contributing
+The built-in `update` command and update checks target `agnosto/fansly-scraper` releases. Running that command can replace this fork's executable with an upstream release. To disable those checks, set `check_updates = false` under `[options]` in your configuration.
 
-Contributions are welcome and greatly appreciated! Whether it's reporting a bug, proposing a feature, or submitting a pull request, your help is valued.
+## Development
 
-![alt text](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)
+Run the automated tests and static checks from the repository root:
 
-![alt text](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat-square)
+```bash
+go test ./...
+go vet ./...
+```
 
-Please read our [Contributing Guidelines](./CONTRIBUTING.md) before you start.
-Check the [Issues tab](https://github.com/TesticularMass/fansly-scraper/issues) to see if there's a task you'd like to take on.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidance. Report bugs and feature requests in this fork's [issue tracker](https://github.com/TesticularMass/fansly-scraper/issues).
 
-## Known Issues
+## Known Limitations
 
-- **Redownloading**: As of v0.8.3, file naming convention was changed causing redownloading of media.
-- **Chat recording**: May occasionally miss messages during reconnections
-- **MacOS users**: May need to allow notifications in [system settings](https://github.com/gen2brain/beeep/issues/67#issuecomment-2646474049)
-- **Live status**: Press `r` in TUI to refresh live status
-- **Duplicate files**: Sometimes the same image may appear twice due to Fansly's API structure
-- **Date formats for livestream filename**: In the event a stream gets interrupted and reattempts to record, if the date format isn't specific enough (ie, no timestamp), it may fail to save the stream after as both vods will be the same name, for now use one of these: `2006-01-02_15:04:05` or `20060102_150405`
+- Changes to filename templates or naming conventions can cause existing content to download again.
+- Chat recording may miss messages during reconnections.
+- macOS notifications may require permission in system settings.
+- Press `r` in the monitoring interface to refresh live status.
+- Duplicate media can appear in API responses.
+- Include a timestamp in livestream filenames, for example `2006-01-02_15-04-05`, to distinguish recordings after interruptions.
 
----
-
-> [!CAUTION]
-> **Disclaimer**: This tool is not affiliated with Fansly or Select Media LLC. Use at your own risk. The developer of this script is not responsible for the end users' actions or any outcomes that may be taken upon the end users' account. Use at your own risk.
+This project is not affiliated with Fansly or Select Media LLC. Use it at your own risk.

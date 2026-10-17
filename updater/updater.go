@@ -66,6 +66,10 @@ func getLatestRelease() (*GithubRelease, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github API returned status: %d", resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -74,6 +78,10 @@ func getLatestRelease() (*GithubRelease, error) {
 	var release GithubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
 		return nil, err
+	}
+
+	if release.TagName == "" {
+		return nil, fmt.Errorf("github release response contained no tag name")
 	}
 
 	return &release, nil

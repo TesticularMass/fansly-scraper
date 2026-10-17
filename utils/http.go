@@ -23,3 +23,14 @@ var HTTPClient = &http.Client{
 		MaxIdleConnsPerHost:   10,
 	},
 }
+
+// ParseUnixTimestamp parses both Unix seconds and Unix milliseconds timestamps.
+func ParseUnixTimestamp(ts int64) time.Time {
+	if ts <= 0 {
+		return time.Time{}
+	}
+	if ts > 1e11 {
+		return time.Unix(ts/1000, (ts%1000)*1000000)
+	}
+	return time.Unix(ts, 0)
+}

@@ -74,8 +74,8 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 		return fmt.Errorf("could not parse segment urls")
 	}
 
-	segmentDir := filepath.Join(filepath.Dir(savePath), "segments_"+postID)
-	if err := os.MkdirAll(segmentDir, os.ModePerm); err != nil {
+	segmentDir, err := os.MkdirTemp(filepath.Dir(savePath), ".segments_"+filepath.Base(savePath)+"_*")
+	if err != nil {
 		return fmt.Errorf("failed to create segment directory: %w", err)
 	}
 	// Clean up segments on every exit path, not just success.

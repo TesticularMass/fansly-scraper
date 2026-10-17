@@ -249,24 +249,24 @@ func runCLIMode(username string, downloadType string, downloader *download.Downl
 	cfg, err := config.LoadConfig(config.GetConfigPath())
 	if err != nil {
 		logger.Logger.Printf("Failed to load config for login: %v", err)
-		os.Exit(1)
+		return
 	}
 	fanslyHeaders, err := headers.NewFanslyHeaders(cfg)
 	if err != nil {
 		logger.Logger.Printf("Failed to create headers for login: %v", err)
-		os.Exit(1)
+		return
 	}
 
 	// Perform the login to populate the user ID
 	if _, err := auth.Login(fanslyHeaders); err != nil {
 		logger.Logger.Printf("Error logging in: %v", err)
-		os.Exit(1)
+		return
 	}
 	// Get model ID from username
 	modelID, err := core.GetModelIDFromUsername(username)
 	if err != nil {
 		logger.Logger.Printf("Error getting model ID: %v", err)
-		os.Exit(1)
+		return
 	}
 
 	var modelObj auth.FollowedModel

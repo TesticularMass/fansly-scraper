@@ -4,7 +4,7 @@ import (
 	//"strings"
 	//"fmt"
 	//"github.com/agnosto/fansly-scraper/auth"
-	//"github.com/agnosto/fansly-scraper/config"
+	"github.com/agnosto/fansly-scraper/config"
 	//"github.com/agnosto/fansly-scraper/core"
 	"time"
 
@@ -113,13 +113,22 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateMonitoringTable()
 	case editConfigFinishedMsg:
 		// Config editing is finished, refresh the UI
+		if cfg, err := config.LoadConfig(config.GetConfigPath()); err == nil && m.downloader != nil {
+			_ = m.downloader.Reload(cfg)
+		}
 		return m, tea.ClearScreen
 	case setupWizardFinishedMsg:
 		m.state = MainMenuState
 		m.accountsFetched = false
+		if cfg, err := config.LoadConfig(config.GetConfigPath()); err == nil && m.downloader != nil {
+			_ = m.downloader.Reload(cfg)
+		}
 		return m, tea.ClearScreen
 	case downloadCompleteMsg:
 		m.cancelDownload = nil
+		if m.state != DownloadProgressState && m.state != DownloadPurchasedState {
+			return m, nil
+		}
 		return m, tea.Sequence(
 			tea.Tick(3*time.Second, func(time.Time) tea.Msg {
 				return delayedDownloadCompleteMsg{}
@@ -132,16 +141,31 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursorPos = 0
 		return m, tea.ClearScreen
 	case delayedDownloadCompleteMsg:
+		if m.state != DownloadProgressState && m.state != DownloadPurchasedState {
+			return m, nil
+		}
 		m.state = CompletionState
 		m.cursorPos = 0
 		return m, tea.ClearScreen
 	case likeUnlikeCompletedMsg:
+		if m.state != LikeUnlikeState {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.message = "Error: " + msg.err.Error()
+			m.state = MainMenuState
+			m.cursorPos = 0
+			return m, nil
+		}
 		return m, tea.Sequence(
 			tea.Tick(3*time.Second, func(time.Time) tea.Msg {
 				return delayedLikeUnlikeCompleteMsg{}
 			}),
 		)
 	case delayedLikeUnlikeCompleteMsg:
+		if m.state != LikeUnlikeState {
+			return m, nil
+		}
 		m.state = CompletionState
 		m.cursorPos = 0
 		return m, nil

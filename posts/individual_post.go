@@ -278,10 +278,17 @@ func GetPostsMediaBatch(postIDs []string, fanslyHeaders *headers.FanslyHeaders) 
 
 		for postID, ids := range orderedByPost {
 			items := make([]AccountMedia, 0, len(ids))
+			hasMissing := false
 			for _, id := range ids {
 				if media, ok := mediaMap[id]; ok {
 					items = append(items, media)
+				} else {
+					hasMissing = true
 				}
+			}
+			if hasMissing {
+				logger.Logger.Printf("[WARN] Post %s is missing %d referenced media items, leaving for retry", postID, len(ids)-len(items))
+				continue
 			}
 			result[postID] = items
 		}
@@ -341,6 +348,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 
 	var allFetchedMedia []AccountMedia
 	const batchSize = 100
+	var firstErr error
 
 	for i := 0; i < len(uniqueIDs); i += batchSize {
 		end := i + batchSize
@@ -364,6 +372,9 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 			if err != nil {
 				logger.Logger.Printf("[WARN] Failed to create request for media batch: %v", err)
+				if firstErr == nil {
+					firstErr = err
+				}
 				return
 			}
 			fanslyHeaders.AddHeadersToRequest(req, true)
@@ -372,22 +383,34 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 			resp, err := client.Do(req)
 			if err != nil {
 				logger.Logger.Printf("[WARN] Failed to execute request for media batch: %v", err)
+				if firstErr == nil {
+					firstErr = err
+				}
 				return
 			}
 			defer resp.Body.Close()
 	
 			if resp.StatusCode != http.StatusOK {
 				logger.Logger.Printf("[WARN] Failed to fetch media by IDs with status code %d for batch", resp.StatusCode)
+				if firstErr == nil {
+					firstErr = fmt.Errorf("status code %d", resp.StatusCode)
+				}
 				return
 			}
 	
 			var mediaResp AccountMediaResponse
 			if err := json.NewDecoder(resp.Body).Decode(&mediaResp); err != nil {
 				logger.Logger.Printf("[WARN] Failed to decode media response for batch: %v", err)
+				if firstErr == nil {
+					firstErr = err
+				}
 				return
 			}
 			if !mediaResp.Success {
 				logger.Logger.Printf("[WARN] API reported failure when fetching media by IDs for batch")
+				if firstErr == nil {
+					firstErr = fmt.Errorf("API reported failure")
+				}
 				return
 			}
 	
@@ -399,7 +422,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 		logger.Logger.Printf("[WARN] Expected to fetch details for %d unique media IDs, but got %d. Some items may have been deleted or are inaccessible.", len(uniqueIDs), len(allFetchedMedia))
 	}
 
-	return allFetchedMedia, nil
+	return allFetchedMedia, firstErr
 }
 
 func GetPostMedia(postId string, fanslyHeaders *headers.FanslyHeaders) ([]AccountMedia, error) {

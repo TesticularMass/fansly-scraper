@@ -51,6 +51,7 @@ func (d *Downloader) DumpChatLogs(ctx context.Context, modelId, modelName string
 	// 4. Fetch New Messages
 	var newMessages []posts.Message
 	cursor := "0"
+	var fetchErr error
 
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetDescription("Fetching Chat Logs"),
@@ -65,6 +66,7 @@ func (d *Downloader) DumpChatLogs(ctx context.Context, modelId, modelName string
 		batch, nextCursor, err := posts.FetchMessages(groupID, cursor, d.headers)
 		if err != nil {
 			logger.Logger.Printf("[ERROR] Failed to fetch message batch: %v", err)
+			fetchErr = err
 			break
 		}
 
@@ -90,6 +92,10 @@ func (d *Downloader) DumpChatLogs(ctx context.Context, modelId, modelName string
 	}
 	bar.Finish()
 	fmt.Println()
+
+	if fetchErr != nil {
+		return fmt.Errorf("failed to fetch all chat messages: %w", fetchErr)
+	}
 
 	if len(newMessages) == 0 {
 		logger.Logger.Printf("[INFO] Chat log is already up to date.")

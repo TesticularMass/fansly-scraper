@@ -21,15 +21,6 @@ type likeUnlikeCompletedMsg struct {
 
 func (m *MainModel) HandleLikeUnlikeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case likeUnlikeCompletedMsg:
-		logger.Logger.Printf("[DEBUG] Received likeUnlikeCompletedMsg: success=%v, err=%v", msg.success, msg.err)
-		if msg.err != nil {
-			m.message = fmt.Sprintf("Error: %v", msg.err)
-		}
-		logger.Logger.Printf("[DEBUG] Transitioning to MainMenuState")
-		m.state = MainMenuState
-		m.cursorPos = 0
-		return m, nil
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Back):

@@ -15,7 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var unsafeChars = regexp.MustCompile(`[^\w\s-._]`)
+var unsafeChars = regexp.MustCompile(`[^\p{L}\p{N}\s\-._]`)
 
 type Config struct {
 	Account         AccountConfig         `toml:"account"`

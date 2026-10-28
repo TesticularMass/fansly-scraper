@@ -1,6 +1,7 @@
 package posts
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,7 +36,7 @@ func TestDeterministicMessageMediaOrder(t *testing.T) {
 	defer func() { messageLimiter = oldLimiter }()
 
 	for run := 0; run < 5; run++ {
-		batch, _, err := getMessageBatchWithMedia("g1", "0", &headers.FanslyHeaders{})
+		batch, _, err := getMessageBatchWithMedia(context.Background(), "g1", "0", &headers.FanslyHeaders{})
 		if err != nil {
 			t.Fatalf("getMessageBatchWithMedia failed: %v", err)
 		}

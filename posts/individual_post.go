@@ -3,8 +3,10 @@ package posts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +30,17 @@ type AccountMediaBundle struct {
 		Pos            int    `json:"pos"`
 	} `json:"bundleContent"`
 }
+
+// Attachment references media on a post or message: content type 1 is a
+// single AccountMedia, 2 is an AccountMediaBundle.
+type Attachment struct {
+	ContentType int    `json:"contentType"`
+	ContentID   string `json:"contentId"`
+}
+
+// ErrMissingMedia means a post references media the API did not return, so
+// the post must not be marked processed.
+var ErrMissingMedia = errors.New("post media incomplete")
 
 type AccountMediaResponse struct {
 	Success  bool           `json:"success"`
@@ -89,14 +102,11 @@ func (m AccountMedia) HasLocations() bool {
 
 // PostInfo struct to capture details from a single post API response
 type PostInfo struct {
-	ID          string `json:"id"`
-	AccountId   string `json:"accountId"`
-	Content     string `json:"content"`
-	CreatedAt   int64  `json:"createdAt"`
-	Attachments []struct {
-		ContentType int    `json:"contentType"`
-		ContentID   string `json:"contentId"`
-	} `json:"attachments"`
+	ID          string       `json:"id"`
+	AccountId   string       `json:"accountId"`
+	Content     string       `json:"content"`
+	CreatedAt   int64        `json:"createdAt"`
+	Attachments []Attachment `json:"attachments"`
 }
 
 type PostResponse struct {
@@ -109,11 +119,11 @@ type PostResponse struct {
 }
 
 // GetFullPostDetails fetches post metadata and all associated media items.
-func GetFullPostDetails(postId string, fanslyHeaders *headers.FanslyHeaders) (*PostInfo, []AccountMedia, error) {
-	ctx := context.Background()
-
+// When some referenced media is unavailable it returns the post, the media it
+// could fetch, and an error wrapping ErrMissingMedia.
+func GetFullPostDetails(ctx context.Context, postId string, fanslyHeaders *headers.FanslyHeaders) (*PostInfo, []AccountMedia, error) {
 	if err := limiter.Wait(ctx); err != nil {
-		return nil, nil, fmt.Errorf("rate limiter error: %v", err)
+		return nil, nil, fmt.Errorf("rate limiter error: %w", err)
 	}
 
 	url := fmt.Sprintf("https://apiv3.fansly.com/api/v1/post?ids=%s&ngsw-bypass=true", postId)
@@ -161,7 +171,7 @@ func GetFullPostDetails(postId string, fanslyHeaders *headers.FanslyHeaders) (*P
 	}
 
 	// 2. Build an ORDERED list of Media IDs from attachments
-	orderedIDs := orderedMediaIDs(postInfo, bundleMap)
+	orderedIDs := orderedMediaIDs(postInfo.Attachments, bundleMap)
 
 	// 3. Identify which IDs are missing from the initial response
 	var mediaToFetch []string
@@ -192,34 +202,45 @@ func GetFullPostDetails(postId string, fanslyHeaders *headers.FanslyHeaders) (*P
 	}
 
 	logger.Logger.Printf("[INFO] Retrieved %d media items for post %s", len(finalMediaItems), postId)
+	if missing := len(orderedIDs) - len(finalMediaItems); missing > 0 {
+		return &postInfo, finalMediaItems, fmt.Errorf("%w: %d of %d items unavailable for post %s", ErrMissingMedia, missing, len(orderedIDs), postId)
+	}
 	return &postInfo, finalMediaItems, nil
 }
 
 // orderedMediaIDs builds the ordered, de-duplicated list of AccountMedia IDs
-// referenced by a post's attachments (bundle content sorted by position).
-func orderedMediaIDs(postInfo PostInfo, bundleMap map[string]AccountMediaBundle) []string {
+// referenced by attachments. Bundle content is sorted by position; bundles
+// without position data fall back to their plain ID list.
+func orderedMediaIDs(attachments []Attachment, bundleMap map[string]AccountMediaBundle) []string {
 	var orderedIDs []string
-	seenIDs := make(map[string]bool) // To prevent duplicates if referenced twice
+	seenIDs := make(map[string]bool)
+	add := func(id string) {
+		if !seenIDs[id] {
+			seenIDs[id] = true
+			orderedIDs = append(orderedIDs, id)
+		}
+	}
 
-	for _, attachment := range postInfo.Attachments {
-		if attachment.ContentType == 1 { // Single AccountMedia
-			if !seenIDs[attachment.ContentID] {
-				orderedIDs = append(orderedIDs, attachment.ContentID)
-				seenIDs[attachment.ContentID] = true
+	for _, attachment := range attachments {
+		switch attachment.ContentType {
+		case 1:
+			add(attachment.ContentID)
+		case 2:
+			bundle, ok := bundleMap[attachment.ContentID]
+			if !ok {
+				continue
 			}
-		} else if attachment.ContentType == 2 { // AccountMediaBundle
-			if bundle, ok := bundleMap[attachment.ContentID]; ok {
-				// Sort the bundle content by 'Pos' (Position) to ensure correct order
-				sort.Slice(bundle.BundleContent, func(i, j int) bool {
-					return bundle.BundleContent[i].Pos < bundle.BundleContent[j].Pos
-				})
-
-				for _, item := range bundle.BundleContent {
-					if !seenIDs[item.AccountMediaID] {
-						orderedIDs = append(orderedIDs, item.AccountMediaID)
-						seenIDs[item.AccountMediaID] = true
-					}
+			if len(bundle.BundleContent) == 0 {
+				for _, id := range bundle.AccountMediaIDs {
+					add(id)
 				}
+				continue
+			}
+			// Sort a copy: the bundle shares its slice with the response.
+			content := slices.Clone(bundle.BundleContent)
+			sort.SliceStable(content, func(i, j int) bool { return content[i].Pos < content[j].Pos })
+			for _, item := range content {
+				add(item.AccountMediaID)
 			}
 		}
 	}
@@ -232,13 +253,12 @@ func orderedMediaIDs(postInfo PostInfo, bundleMap map[string]AccountMediaBundle)
 // per post; batching cuts timeline preparation time by the batch size.
 // The result maps post ID to its ordered media; posts missing from the map
 // failed to fetch and should not be marked processed.
-func GetPostsMediaBatch(postIDs []string, fanslyHeaders *headers.FanslyHeaders) (map[string][]AccountMedia, error) {
+func GetPostsMediaBatch(ctx context.Context, postIDs []string, fanslyHeaders *headers.FanslyHeaders) (map[string][]AccountMedia, error) {
 	result := make(map[string][]AccountMedia, len(postIDs))
 	if len(postIDs) == 0 {
 		return result, nil
 	}
 
-	ctx := context.Background()
 	const batchSize = 25
 	var firstErr error
 
@@ -275,7 +295,7 @@ func GetPostsMediaBatch(postIDs []string, fanslyHeaders *headers.FanslyHeaders) 
 		orderedByPost := make(map[string][]string, len(postResp.Response.Posts))
 		var missing []string
 		for _, post := range postResp.Response.Posts {
-			ids := orderedMediaIDs(post, bundleMap)
+			ids := orderedMediaIDs(post.Attachments, bundleMap)
 			orderedByPost[post.ID] = ids
 			for _, id := range ids {
 				if _, ok := mediaMap[id]; !ok {
@@ -441,11 +461,6 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 	}
 
 	return allFetchedMedia, firstErr
-}
-
-func GetPostMedia(postId string, fanslyHeaders *headers.FanslyHeaders) ([]AccountMedia, error) {
-	_, media, err := GetFullPostDetails(postId, fanslyHeaders)
-	return media, err
 }
 
 func filterMediaWithLocations(mediaItems []AccountMedia) []AccountMedia {

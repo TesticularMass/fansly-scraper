@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 
 	//"log"
@@ -71,9 +70,7 @@ func (m *MainModel) RenderDownloadActionsMenu() string {
 }
 
 func (m *MainModel) startDownload(option string) tea.Cmd {
-	// Wire up cancellation so Back/Quit can stop an in-flight download.
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelDownload = cancel
+	ctx, job := m.newDownloadJob()
 
 	return func() tea.Msg {
 		var err error
@@ -123,6 +120,6 @@ func (m *MainModel) startDownload(option string) tea.Cmd {
 			logger.Logger.Printf("Error downloading %s for %s: %v", option, m.selectedModel, err)
 		}
 
-		return downloadCompleteMsg{}
+		return downloadCompleteMsg{job: job}
 	}
 }

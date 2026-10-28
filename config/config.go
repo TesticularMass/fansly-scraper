@@ -174,14 +174,18 @@ func SaveConfig(cfg *Config) error {
 		cfg = MergeConfigs(existingConfig, cfg)
 	}
 
-	// Write to a temp file and rename so a crash or concurrent reader never
-	// sees a half-written config.
-	tmpPath := configPath + ".tmp"
-	file, err := os.Create(tmpPath)
+	return writeConfig(configPath, cfg)
+}
+
+// writeConfig replaces path through a temporary file so a crash or concurrent
+// reader never sees a half-written config. CreateTemp makes the file
+// owner-only, which matters because the config holds the auth token.
+func writeConfig(path string, cfg *Config) error {
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
-
+	tmpPath := file.Name()
 	if err := toml.NewEncoder(file).Encode(cfg); err != nil {
 		file.Close()
 		os.Remove(tmpPath)
@@ -191,8 +195,11 @@ func SaveConfig(cfg *Config) error {
 		os.Remove(tmpPath)
 		return err
 	}
-
-	return os.Rename(tmpPath, configPath)
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func LoadConfig(configPath string) (*Config, error) {

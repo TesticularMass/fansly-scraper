@@ -18,7 +18,7 @@ func (d *Downloader) DownloadMessages(ctx context.Context, modelId, modelName st
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	messagesWithMedia, err := posts.GetAllMessagesWithMedia(modelId, d.headers, d.cfg.Options.PostLimit)
+	messagesWithMedia, err := posts.GetAllMessagesWithMedia(ctx, modelId, d.headers, d.cfg.Options.PostLimit)
 	if err != nil {
 		logger.Logger.Printf("[ERROR] [%s] Failed to get message media: %v", modelName, err)
 		return err
@@ -79,5 +79,5 @@ func (d *Downloader) DownloadMessages(ctx context.Context, modelId, modelName st
 	wg.Wait()
 	d.progressBar.Clear()
 
-	return nil
+	return ctx.Err()
 }

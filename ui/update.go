@@ -127,23 +127,29 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.ClearScreen
 	case downloadCompleteMsg:
+		if msg.job != m.downloadJob {
+			return m, nil
+		}
 		m.cancelDownload = nil
 		if m.state != DownloadProgressState && m.state != DownloadPurchasedState {
 			return m, nil
 		}
 		return m, tea.Sequence(
 			tea.Tick(3*time.Second, func(time.Time) tea.Msg {
-				return delayedDownloadCompleteMsg{}
+				return delayedDownloadCompleteMsg{job: msg.job}
 			}),
 		)
 	case downloadErrorMsg:
+		if msg.job != m.downloadJob {
+			return m, nil
+		}
 		m.cancelDownload = nil
 		m.message = "Download error: " + msg.Error.Error()
 		m.state = MainMenuState
 		m.cursorPos = 0
 		return m, tea.ClearScreen
 	case delayedDownloadCompleteMsg:
-		if m.state != DownloadProgressState && m.state != DownloadPurchasedState {
+		if msg.job != m.downloadJob || (m.state != DownloadProgressState && m.state != DownloadPurchasedState) {
 			return m, nil
 		}
 		m.state = CompletionState

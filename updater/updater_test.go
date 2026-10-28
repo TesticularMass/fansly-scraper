@@ -1,8 +1,13 @@
 package updater
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -39,5 +44,31 @@ func TestCheckUpdateAvailableNon200(t *testing.T) {
 	}
 	if avail {
 		t.Errorf("expected avail=false on HTTP 403 error")
+	}
+}
+
+func TestFailedUpdateKeepsExistingTmpUpdateDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+	existing := filepath.Join("tmp_update", "keep.txt")
+	if err := os.MkdirAll("tmp_update", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existing, []byte("user file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := utils.HTTPClient.Transport
+	defer func() { utils.HTTPClient.Transport = old }()
+	utils.HTTPClient.Transport = testRoundTripper{status: http.StatusOK, body: "not a gzip archive"}
+
+	var release GithubRelease
+	asset := fmt.Sprintf("fansly-scraper_1.0.0_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	if err := json.Unmarshal([]byte(fmt.Sprintf(`{"tag_name":"v1.0.0","assets":[{"name":%q,"browser_download_url":"https://example.invalid/update"}]}`, asset)), &release); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateBinary(&release); err == nil {
+		t.Fatal("expected an invalid archive error")
+	}
+	if _, err := os.Stat(existing); err != nil {
+		t.Fatalf("failed update removed an existing file: %v", err)
 	}
 }

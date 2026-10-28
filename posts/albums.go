@@ -87,19 +87,19 @@ func FetchPurchasedAlbums(fanslyHeaders *headers.FanslyHeaders) (*Album, error) 
 	return nil, fmt.Errorf("no purchases album found")
 }
 
-func FetchAlbumContent(albumID string, fanslyHeaders *headers.FanslyHeaders) (*AlbumContentResponse, error) {
+func FetchAlbumContent(ctx context.Context, albumID string, fanslyHeaders *headers.FanslyHeaders) (*AlbumContentResponse, error) {
 	var allContent AlbumContentResponse
 	before := "0"
 	hasMore := true
 	limiter := rate.NewLimiter(rate.Every(3*time.Second), 2)
 
 	for hasMore {
-		if err := limiter.Wait(context.Background()); err != nil {
-			return nil, fmt.Errorf("rate limiter error: %v", err)
+		if err := limiter.Wait(ctx); err != nil {
+			return nil, fmt.Errorf("rate limiter error: %w", err)
 		}
 
 		url := fmt.Sprintf("https://apiv3.fansly.com/api/v1/uservault/album/content?albumId=%s&before=%s&after=0&limit=25&ngsw-bypass=true", albumID, before)
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, err
 		}

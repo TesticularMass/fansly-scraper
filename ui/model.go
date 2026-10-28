@@ -75,6 +75,7 @@ type MainModel struct {
 	downloader                *download.Downloader
 	progressBar               *progressbar.ProgressBar
 	cancelDownload            context.CancelFunc
+	downloadJob               int // identifies the current download; results from older jobs are ignored
 	message                   string
 	monitoredModels           map[string]bool // Map of model IDs to monitoring status
 	monitoringService         *service.MonitoringService
@@ -108,7 +109,7 @@ type updateCheckMsg struct {
 
 type LiveStatusUpdateMsg struct{}
 
-type delayedDownloadCompleteMsg struct{}
+type delayedDownloadCompleteMsg struct{ job int }
 type delayedLikeUnlikeCompleteMsg struct{}
 
 type monitoringSelectedMsg struct{}
@@ -134,11 +135,30 @@ type setupWizardFinishedMsg struct{}
 
 type downloadErrorMsg struct {
 	Error error
+	job   int
 }
 
 type tickMsg struct{}
 
-type downloadCompleteMsg struct{}
+type downloadCompleteMsg struct{ job int }
+
+// stopDownload cancels the running download and abandons its job, so its
+// late result cannot change the screen.
+func (m *MainModel) stopDownload() {
+	if m.cancelDownload != nil {
+		m.cancelDownload()
+		m.cancelDownload = nil
+	}
+	m.downloadJob++
+}
+
+// newDownloadJob stops any running download and starts a new job.
+func (m *MainModel) newDownloadJob() (context.Context, int) {
+	m.stopDownload()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelDownload = cancel
+	return ctx, m.downloadJob
+}
 
 type followedModelsModel struct {
 	welcome        string

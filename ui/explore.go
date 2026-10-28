@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"strings"
 
 	"github.com/agnosto/fansly-scraper/logger"
@@ -83,19 +82,18 @@ func parseExploreInput(input string) (tags []string, users []string) {
 
 // startExploreDownload runs the Explore download asynchronously.
 func (m *MainModel) startExploreDownload(input string) tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelDownload = cancel
+	ctx, job := m.newDownloadJob()
 
 	return func() tea.Msg {
 		tags, users := parseExploreInput(input)
 		if len(tags) == 0 {
 			logger.Logger.Printf("Explore: no valid tags in input %q", input)
-			return downloadCompleteMsg{}
+			return downloadCompleteMsg{job: job}
 		}
 		if err := m.downloader.DownloadExplore(ctx, tags, users, m.downloader.PostLimit()); err != nil {
 			logger.Logger.Printf("Explore download failed: %v", err)
-			return downloadErrorMsg{Error: err}
+			return downloadErrorMsg{Error: err, job: job}
 		}
-		return downloadCompleteMsg{}
+		return downloadCompleteMsg{job: job}
 	}
 }

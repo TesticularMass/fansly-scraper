@@ -35,15 +35,14 @@ type StoriesResponse struct {
 	} `json:"response"`
 }
 
-func GetModelStories(accountID string, fanslyHeaders *headers.FanslyHeaders) ([]Story, []AccountMedia, error) {
-	ctx := context.Background()
+func GetModelStories(ctx context.Context, accountID string, fanslyHeaders *headers.FanslyHeaders) ([]Story, []AccountMedia, error) {
 	err := storyLimiter.Wait(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("rate limiter error: %v", err)
+		return nil, nil, fmt.Errorf("rate limiter error: %w", err)
 	}
 
 	url := fmt.Sprintf("https://apiv3.fansly.com/api/v1/mediastoriesnew?accountId=%s&ngsw-bypass=true", accountID)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating request: %v", err)
 	}

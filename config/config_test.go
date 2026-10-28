@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -176,5 +177,56 @@ func TestSetProfileAndSetConfigPath(t *testing.T) {
 	}
 	if GetConfigDir() != filepath.Dir(custom) {
 		t.Errorf("expected %s, got %s", filepath.Dir(custom), GetConfigDir())
+	}
+}
+
+func TestEnsureConfigUpdatedKeepsExplicitFalse(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	minimal := `[account]
+auth_token = "dummy_token"
+user_agent = "dummy_agent"
+
+[options]
+save_location = "/tmp/downloads"
+
+[live_settings]
+record_chat = false
+ffmpeg_convert = false
+`
+	if err := os.WriteFile(configPath, []byte(minimal), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureConfigUpdated(configPath); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LiveSettings.RecordChat || cfg.LiveSettings.FFmpegConvert || !cfg.LiveSettings.GenerateContactSheet || cfg.LiveSettings.VODsFileExtension != ".ts" {
+		t.Fatalf("live settings after upgrade: %+v", cfg.LiveSettings)
+	}
+}
+
+func TestSaveConfigKeepsFilePrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not use Unix permission bits")
+	}
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	SetConfigPath(configPath)
+	defer SetConfigPath("")
+	cfg := CreateDefaultConfig()
+	cfg.Account.AuthToken, cfg.Account.UserAgent = "token", "agent"
+	for range 2 {
+		if err := SaveConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf("config holding the auth token has mode %04o", perm)
 	}
 }

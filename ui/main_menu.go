@@ -79,15 +79,14 @@ func (m *MainModel) handleMainMenuSelection() (tea.Model, tea.Cmd) {
 	case "Download purchased content":
 		m.actionChosen = "download_purchases"
 		m.state = DownloadPurchasedState
-		ctx, cancel := context.WithCancel(context.Background())
-		m.cancelDownload = cancel
+		ctx, job := m.newDownloadJob()
 		return m, func() tea.Msg {
 			err := m.downloader.DownloadPurchasedContent(ctx)
 			if err != nil {
 				logger.Logger.Printf("Error downloading purchased content: %v", err)
-				return downloadErrorMsg{Error: err}
+				return downloadErrorMsg{Error: err, job: job}
 			}
-			return downloadCompleteMsg{}
+			return downloadCompleteMsg{job: job}
 		}
 		//return m, m.fetchAccountInfoCmd()
 	case "Monitor a user's livestreams":

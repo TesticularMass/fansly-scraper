@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,14 +172,14 @@ func (ds *DiagnosisSuite) testCreator() {
 	}
 	ds.log(fmt.Sprintf(" - INFO: Model ID for %s is %s", ds.flags.Creator, modelID))
 
-	timelinePosts, err := posts.GetAllTimelinePosts(modelID, "", ds.fanslyHeaders, 0)
+	timelinePosts, err := posts.GetAllTimelinePosts(context.Background(), modelID, "", ds.fanslyHeaders, 0)
 	if err != nil {
 		ds.log(fmt.Sprintf(" - FAIL: Could not get timeline posts: %v", err))
 	} else {
 		ds.log(fmt.Sprintf(" - INFO: Found %d timeline posts.", len(timelinePosts)))
 	}
 
-	messages, err := posts.GetAllMessagesWithMedia(modelID, ds.fanslyHeaders, 0)
+	messages, err := posts.GetAllMessagesWithMedia(context.Background(), modelID, ds.fanslyHeaders, 0)
 	if err != nil {
 		ds.log(fmt.Sprintf(" - FAIL: Could not get messages: %v", err))
 	} else {
@@ -193,10 +194,13 @@ func (ds *DiagnosisSuite) testCreator() {
 // Replace the old testPost function with this one.
 func (ds *DiagnosisSuite) testPost() {
 	ds.log(fmt.Sprintf("\n[5] Testing Post: %s", ds.flags.PostID))
-	postInfo, allMedia, err := posts.GetFullPostDetails(ds.flags.PostID, ds.fanslyHeaders)
-	if err != nil {
+	postInfo, allMedia, err := posts.GetFullPostDetails(context.Background(), ds.flags.PostID, ds.fanslyHeaders)
+	if err != nil && !errors.Is(err, posts.ErrMissingMedia) {
 		ds.log(fmt.Sprintf(" - FAIL: Could not get post details: %v", err))
 		return
+	}
+	if err != nil {
+		ds.log(fmt.Sprintf(" - WARN: %v", err))
 	}
 
 	// Get creator username from the post data itself

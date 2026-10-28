@@ -30,9 +30,9 @@ func (d *Downloader) DownloadPurchasedContent(ctx context.Context) error {
 	albumID := purchasedAlbum.ID
 	logger.Logger.Printf("Purchases Album ID: %s, Title: %s", albumID, purchasedAlbum.Title)
 
-	content, err := posts.FetchAlbumContent(albumID, d.headers)
+	content, err := posts.FetchAlbumContent(ctx, albumID, d.headers)
 	if err != nil {
-		return fmt.Errorf("error fetching content for album %s: %v", albumID, err)
+		return fmt.Errorf("error fetching content for album %s: %w", albumID, err)
 	}
 
 	accountMediaItems := content.Response.AggregationData.AccountMedia
@@ -142,5 +142,5 @@ func (d *Downloader) DownloadPurchasedContent(ctx context.Context) error {
 	}
 
 	d.progressBar.Finish()
-	return nil
+	return ctx.Err()
 }

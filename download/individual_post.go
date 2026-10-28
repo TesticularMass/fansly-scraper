@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,9 +41,9 @@ func (d *Downloader) DownloadPostByID(ctx context.Context, postIdentifier string
 	}
 
 	// 2. Get Post Details (info and media)
-	postInfo, accountMediaItems, err := posts.GetFullPostDetails(postID, d.headers)
-	if err != nil {
-		return fmt.Errorf("error getting post details for %s: %w", postID, err)
+	postInfo, accountMediaItems, mediaErr := posts.GetFullPostDetails(ctx, postID, d.headers)
+	if mediaErr != nil && !errors.Is(mediaErr, posts.ErrMissingMedia) {
+		return fmt.Errorf("error getting post details for %s: %w", postID, mediaErr)
 	}
 
 	// 3. Get Account Details (Username) from the accountId found in the post
@@ -78,10 +79,13 @@ func (d *Downloader) DownloadPostByID(ctx context.Context, postIdentifier string
 		}
 	}
 
-	// Leave failed posts unmarked so they are retried on the next run.
 	if downloadFailed {
-		logger.Logger.Printf("[WARN] Post %s had failures, leaving unmarked for retry", postInfo.ID)
-		return fmt.Errorf("one or more media items failed for post %s", postInfo.ID)
+		mediaErr = errors.Join(mediaErr, fmt.Errorf("one or more media items failed for post %s", postInfo.ID))
+	}
+	// Leave incomplete posts unmarked so they are retried on the next run.
+	if mediaErr != nil {
+		logger.Logger.Printf("[WARN] Post %s is incomplete, leaving unmarked for retry: %v", postInfo.ID, mediaErr)
+		return mediaErr
 	}
 
 	d.database.MarkPostAsProcessed(postInfo.ID, modelName, postInfo.Content, postInfo.CreatedAt)

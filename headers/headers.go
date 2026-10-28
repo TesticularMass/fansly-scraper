@@ -60,6 +60,14 @@ func GetCachedHeaders() (*FanslyHeaders, error) {
 	return h, nil
 }
 
+// InvalidateCachedHeaders makes the next GetCachedHeaders call rebuild from
+// the current config, so a changed account takes effect.
+func InvalidateCachedHeaders() {
+	cachedMu.Lock()
+	defer cachedMu.Unlock()
+	cachedHeaders = nil
+}
+
 func NewFanslyHeaders(cfg *config.Config) (*FanslyHeaders, error) {
 	headers := &FanslyHeaders{
 		AuthToken: cfg.Account.AuthToken,

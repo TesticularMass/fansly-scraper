@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -48,16 +47,15 @@ func (m *MainModel) HandleWallSelectionUpdate(msg tea.Msg) (tea.Model, tea.Cmd) 
 }
 
 func (m *MainModel) startWallDownload() tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelDownload = cancel
+	ctx, job := m.newDownloadJob()
 
 	return func() tea.Msg {
 		err := m.downloader.DownloadTimeline(ctx, m.selectedModelId, m.selectedModel, m.selectedWallID)
 		if err != nil {
 			logger.Logger.Printf("Error downloading wall %s: %v", m.selectedWallID, err)
-			return downloadErrorMsg{Error: err}
+			return downloadErrorMsg{Error: err, job: job}
 		}
-		return downloadCompleteMsg{}
+		return downloadCompleteMsg{job: job}
 	}
 }
 

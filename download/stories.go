@@ -18,7 +18,7 @@ func (d *Downloader) DownloadStories(ctx context.Context, modelId, modelName str
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	stories, storyMediaItems, err := posts.GetModelStories(modelId, d.headers)
+	stories, storyMediaItems, err := posts.GetModelStories(ctx, modelId, d.headers)
 	if err != nil {
 		logger.Logger.Printf("[ERROR] [%s] Failed to get story media: %v", modelName, err)
 		return err
@@ -75,7 +75,7 @@ func (d *Downloader) DownloadStories(ctx context.Context, modelId, modelName str
 
 	wg.Wait()
 	d.progressBar.Clear()
-	return nil
+	return ctx.Err()
 }
 
 func (d *Downloader) downloadStoryMediaItem(ctx context.Context, accountMedia posts.AccountMedia, baseDir, modelName string, contentSource any, index int) error {

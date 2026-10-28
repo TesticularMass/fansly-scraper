@@ -63,15 +63,15 @@ var (
 	timelineLimiter = rate.NewLimiter(rate.Every(3*time.Second), 2)
 )
 
-func GetAllTimelinePosts(accountID string, wallID string, fanslyHeaders *headers.FanslyHeaders, limit int) ([]Post, error) {
+func GetAllTimelinePosts(ctx context.Context, accountID string, wallID string, fanslyHeaders *headers.FanslyHeaders, limit int) ([]Post, error) {
 	var allPosts []Post
 	before := "0"
 	hasMore := true
 
 	// Get initial batch to check access
-	initialResponse, err := getTimelineBatchResponse(accountID, wallID, before, fanslyHeaders)
+	initialResponse, err := getTimelineBatchResponse(ctx, accountID, wallID, before, fanslyHeaders)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check timeline access: %v", err)
+		return nil, fmt.Errorf("failed to check timeline access: %w", err)
 	}
 
 	// Check if we have access
@@ -107,7 +107,7 @@ func GetAllTimelinePosts(accountID string, wallID string, fanslyHeaders *headers
 	bar.Add(len(initialResponse.Response.Posts))
 
 	for hasMore {
-		response, err := getTimelineBatchResponse(accountID, wallID, before, fanslyHeaders)
+		response, err := getTimelineBatchResponse(ctx, accountID, wallID, before, fanslyHeaders)
 		if err != nil {
 			return nil, err
 		}
@@ -143,17 +143,16 @@ func GetAllTimelinePosts(accountID string, wallID string, fanslyHeaders *headers
 	return allPosts, nil
 }
 
-func getTimelineBatchResponse(accountID, wallID, before string, fanslyHeaders *headers.FanslyHeaders) (TimelineResponse, error) {
-	ctx := context.Background()
+func getTimelineBatchResponse(ctx context.Context, accountID, wallID, before string, fanslyHeaders *headers.FanslyHeaders) (TimelineResponse, error) {
 	err := timelineLimiter.Wait(ctx)
 	if err != nil {
-		return TimelineResponse{}, fmt.Errorf("rate limiter error: %v", err)
+		return TimelineResponse{}, fmt.Errorf("rate limiter error: %w", err)
 	}
 
 	// Use the original URL format that was working
 	url := fmt.Sprintf("https://apiv3.fansly.com/api/v1/timelinenew/%s?before=%s&after=0&wallId=%s&contentSearch&ngsw-bypass=true", accountID, before, wallID)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return TimelineResponse{}, err
 	}

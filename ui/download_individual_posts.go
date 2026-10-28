@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"strconv"
 	"strings"
 
@@ -83,14 +82,13 @@ func parseIndividualPostLinks(input string) []string {
 
 // startIndividualPostsDownload starts the download of multiple post IDs/URLs asynchronously
 func (m *MainModel) startIndividualPostsDownload(input string) tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelDownload = cancel
+	ctx, job := m.newDownloadJob()
 
 	return func() tea.Msg {
 		postIDs := parseIndividualPostLinks(input)
 		if len(postIDs) == 0 {
 			logger.Logger.Printf("No valid post IDs or URLs found in input: %q", input)
-			return downloadCompleteMsg{}
+			return downloadCompleteMsg{job: job}
 		}
 
 		for i, id := range postIDs {
@@ -104,6 +102,6 @@ func (m *MainModel) startIndividualPostsDownload(input string) tea.Cmd {
 			}
 		}
 
-		return downloadCompleteMsg{}
+		return downloadCompleteMsg{job: job}
 	}
 }

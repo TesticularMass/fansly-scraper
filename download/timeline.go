@@ -93,7 +93,7 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	timelinePosts, err := posts.GetAllTimelinePosts(modelId, wallID, d.headers, d.cfg.Options.PostLimit)
+	timelinePosts, err := posts.GetAllTimelinePosts(ctx, modelId, wallID, d.headers, d.cfg.Options.PostLimit)
 	if err != nil {
 		logger.Logger.Printf("[ERROR] [%s] Failed to get timeline posts: %v", modelName, err)
 		return err
@@ -161,7 +161,7 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 		}
 	}
 
-	mediaByPost, err := posts.GetPostsMediaBatch(postsToFetch, d.headers)
+	mediaByPost, err := posts.GetPostsMediaBatch(ctx, postsToFetch, d.headers)
 	if err != nil {
 		logger.Logger.Printf("[WARN] [%s] Some post batches failed to fetch: %v", modelName, err)
 	}
@@ -221,7 +221,7 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 
 	d.progressBar.Finish()
 	fmt.Println()
-	return nil
+	return ctx.Err()
 }
 
 func (d *Downloader) DownloadMediaItem(ctx context.Context, accountMedia posts.AccountMedia, baseDir, modelName string, contentSource any, index int, isDiagnosis ...bool) error {
@@ -839,5 +839,6 @@ func (d *Downloader) Reload(cfg *config.Config) error {
 	d.saveLocation = cfg.Options.SaveLocation
 	d.M3U8Download = cfg.Options.M3U8Download
 	d.headers = fanslyHeaders
+	headers.InvalidateCachedHeaders()
 	return nil
 }

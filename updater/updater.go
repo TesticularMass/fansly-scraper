@@ -102,33 +102,38 @@ func updateBinary(release *GithubRelease) error {
 		return fmt.Errorf("no suitable binary found for your system")
 	}
 
+	execPath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
 	fmt.Println("Downloading new version...")
 	resp, err := utils.HTTPClient.Get(downloadURL)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("update download returned status: %d", resp.StatusCode)
+	}
 
-	// Create a temporary directory in the current working directory
-	currentDir, err := os.Getwd()
+	// A fresh directory next to the executable keeps cleanup away from user
+	// files and lets the final rename stay on one filesystem.
+	tempDir, err := os.MkdirTemp(filepath.Dir(execPath), ".fansly-scraper-update-*")
 	if err != nil {
 		return err
 	}
-	tempDir := filepath.Join(currentDir, "tmp_update")
-	err = os.MkdirAll(tempDir, 0755)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tempDir) // Clean up the temporary directory when done
+	defer os.RemoveAll(tempDir)
 
 	tempFile := filepath.Join(tempDir, "update.tar.gz")
 	outFile, err := os.Create(tempFile)
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
-
 	_, err = io.Copy(outFile, resp.Body)
+	if closeErr := outFile.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return err
 	}
@@ -157,12 +162,6 @@ func updateBinary(release *GithubRelease) error {
 
 	if newExePath == "" {
 		return fmt.Errorf("new executable not found in the update package")
-	}
-
-	// Get the current executable path
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
 	}
 
 	// Rename the current executable to .old

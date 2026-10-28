@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"os"
@@ -51,140 +52,56 @@ func EnsureConfigExists(configPath string) error {
 	return nil
 }
 
-// EnsureConfigUpdated checks if the config file has all the latest fields and updates it with defaults if needed.
+// EnsureConfigUpdated adds settings missing from the config file with their
+// default values. Settings present in the file keep their values, including
+// explicit false and zero.
 func EnsureConfigUpdated(configPath string) error {
-	var rawConfig map[string]any
-	metadata, err := toml.DecodeFile(configPath, &rawConfig)
+	cfg := CreateDefaultConfig()
+	metadata, err := toml.DecodeFile(configPath, cfg)
 	if err != nil {
+		return err
+	}
+	if err := ValidateConfig(cfg, configPath); err != nil {
 		return err
 	}
 
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		return err
-	}
 	defaults := CreateDefaultConfig()
 	updated := false
-
-	if reflect.DeepEqual(cfg.Options, OptionsConfig{}) {
-		cfg.Options = defaults.Options
-		updated = true
-	} else {
-		if cfg.Options.SaveLocation == "" {
-			cfg.Options.SaveLocation = defaults.Options.SaveLocation
-			updated = true
-		}
-		if !metadata.IsDefined("options", "skip_previews") {
-			cfg.Options.SkipPreviews = defaults.Options.SkipPreviews
-			updated = true
-		}
-		if !metadata.IsDefined("options", "use_content_as_filename") {
-			cfg.Options.UseContentAsFilename = defaults.Options.UseContentAsFilename
-			updated = true
-		}
-		if !metadata.IsDefined("options", "content_filename_template") {
-			cfg.Options.ContentFilenameTemplate = defaults.Options.ContentFilenameTemplate
-			updated = true
-		}
-		if !metadata.IsDefined("options", "download_media_type") {
-			cfg.Options.DownloadMediaType = defaults.Options.DownloadMediaType
-			updated = true
-		}
-		if !metadata.IsDefined("options", "skip_downloaded_posts") {
-			cfg.Options.SkipDownloadedPosts = defaults.Options.SkipDownloadedPosts
-			updated = true
-		}
-		if !metadata.IsDefined("options", "content_filename_length") {
-			cfg.Options.ContentFilenameLength = defaults.Options.ContentFilenameLength
-			updated = true
-		}
-		if !metadata.IsDefined("options", "date_format") {
-			cfg.Options.DateFormat = defaults.Options.DateFormat
-			updated = true
-		}
-		if !metadata.IsDefined("options", "download_profile_pic") {
-			cfg.Options.DownloadProfilePic = defaults.Options.DownloadProfilePic
-			updated = true
-		}
-		if !metadata.IsDefined("options", "post_limit") {
-			cfg.Options.PostLimit = defaults.Options.PostLimit
-			updated = true
-		}
-		if !metadata.IsDefined("options", "skip_long_videos") {
-			cfg.Options.SkipLongVideos = defaults.Options.SkipLongVideos
-			updated = true
-		}
-		if !metadata.IsDefined("options", "max_video_duration_seconds") {
-			cfg.Options.MaxVideoDurationSeconds = defaults.Options.MaxVideoDurationSeconds
-			updated = true
-		}
-		if !metadata.IsDefined("options", "apply_file_timestamps") {
-			cfg.Options.ApplyFileTimestamps = defaults.Options.ApplyFileTimestamps
+	// Blank live-recording names are repaired: an empty extension produces
+	// recordings ffmpeg cannot write.
+	for _, field := range []struct {
+		value    *string
+		fallback string
+	}{
+		{&cfg.LiveSettings.VODsFileExtension, defaults.LiveSettings.VODsFileExtension},
+		{&cfg.LiveSettings.FilenameTemplate, defaults.LiveSettings.FilenameTemplate},
+		{&cfg.LiveSettings.DateFormat, defaults.LiveSettings.DateFormat},
+	} {
+		if *field.value == "" {
+			*field.value = field.fallback
 			updated = true
 		}
 	}
 
-	if reflect.DeepEqual(cfg.Notifications, NotificationsConfig{}) {
-		cfg.Notifications = defaults.Notifications
-		updated = true
-	} else {
-		if !metadata.IsDefined("notifications", "notify_on_live_start") {
-			cfg.Notifications.NotifyOnLiveStart = defaults.Notifications.NotifyOnLiveStart
-			updated = true
-		}
-		if !metadata.IsDefined("notifications", "notify_on_live_end") {
-			cfg.Notifications.NotifyOnLiveEnd = defaults.Notifications.NotifyOnLiveEnd
-			updated = true
-		}
-		if !metadata.IsDefined("notifications", "send_contact_sheet_on_live_end") {
-			cfg.Notifications.SendContactSheetOnLiveEnd = defaults.Notifications.SendContactSheetOnLiveEnd
-			updated = true
-		}
+	var encodedDefaults bytes.Buffer
+	if err := toml.NewEncoder(&encodedDefaults).Encode(defaults); err != nil {
+		return err
 	}
-
-	if reflect.DeepEqual(cfg.LiveSettings, LiveSettingsConfig{}) {
-		cfg.LiveSettings = defaults.LiveSettings
-		updated = true
-	} else {
-		if cfg.LiveSettings.VODsFileExtension == "" {
-			cfg.LiveSettings.VODsFileExtension = defaults.LiveSettings.VODsFileExtension
+	defaultMetadata, err := toml.Decode(encodedDefaults.String(), &Config{})
+	if err != nil {
+		return err
+	}
+	for _, key := range defaultMetadata.Keys() {
+		if !metadata.IsDefined(key...) {
 			updated = true
-		}
-		if cfg.LiveSettings.FilenameTemplate == "" {
-			cfg.LiveSettings.FilenameTemplate = defaults.LiveSettings.FilenameTemplate
-			updated = true
-		}
-		if cfg.LiveSettings.DateFormat == "" {
-			cfg.LiveSettings.DateFormat = defaults.LiveSettings.DateFormat
-			updated = true
-		}
-		if !metadata.IsDefined("live_settings", "record_chat") {
-			cfg.LiveSettings.RecordChat = defaults.LiveSettings.RecordChat
-			updated = true
-		}
-		if !metadata.IsDefined("live_settings", "ffmpeg_recording_options") {
-			cfg.LiveSettings.FFmpegRecordingOptions = defaults.LiveSettings.FFmpegRecordingOptions
-			updated = true
-		}
-		if !metadata.IsDefined("live_settings", "ffmpeg_conversion_options") {
-			cfg.LiveSettings.FFmpegConversionOptions = defaults.LiveSettings.FFmpegConversionOptions
-			updated = true
-		}
-		if !metadata.IsDefined("live_settings", "check_interval") {
-			cfg.LiveSettings.CheckInterval = defaults.LiveSettings.CheckInterval
-			updated = true
+			break
 		}
 	}
 
 	if !updated {
 		return nil
 	}
-	file, err := os.Create(configPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return toml.NewEncoder(file).Encode(cfg)
+	return writeConfig(configPath, cfg)
 }
 
 // MergeConfigs merges a new configuration into an existing one.

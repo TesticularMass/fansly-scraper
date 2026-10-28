@@ -1,7 +1,6 @@
 package download
 
 import (
-	//"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 
-	//"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,14 +20,9 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
-	//"github.com/grafov/m3u8"
-
-	//"github.com/agnosto/fansly-scraper/config"
 	"github.com/agnosto/fansly-scraper/logger"
 	"github.com/agnosto/fansly-scraper/utils"
 )
-
-//var m3u8Semaphore = semaphore.NewWeighted(2) // Limit to 2 concurrent M3U8 downloads, shitop programming
 
 func GetM3U8Cookies(m3u8URL string) map[string]string {
 	u, err := url.Parse(m3u8URL)
@@ -57,14 +50,11 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	cookies := GetM3U8Cookies(m3u8URL)
 
 	// Fetch M3U8 playlist
-	//log.Printf("Downloading M3U8 from URL: %s", m3u8URL)
 	playlistContent, err := fetchM3U8Playlist(m3u8URL, cookies)
-	//log.Printf("[DOWNLOAD M3U8] PlayList: %v", playlist)
 	if err != nil {
 		return err
 	}
 
-	//log.Printf("Playlist content:\n%s", playlistContent)
 	segmentURLs, err := parseM3U8Playlist(playlistContent, m3u8URL, cookies)
 	if err != nil {
 		return err
@@ -82,9 +72,7 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	defer os.RemoveAll(segmentDir)
 
 	// Download segments
-	//log.Printf("Extracted segment URLs: %v", segmentURLs)
 	segmentFiles, err := downloadSegments(ctx, segmentURLs, segmentDir, cookies)
-	//log.Printf("[DOWNLOAD M3U8] SegmentedFiles: %v", segmentFiles)
 	if err != nil {
 		return err
 	}
@@ -92,7 +80,6 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	// Combine segments using ffmpeg
 	outputFile := filepath.Join(filepath.Dir(savePath), filepath.Base(savePath))
 	err = combineSegments(segmentFiles, outputFile, segmentDir, frameRate)
-	//log.Printf("[DOWNLOAD M3U8] OutputFile: %v, or Error: %v", outputFile, err)
 	if err != nil {
 		return err
 	}
@@ -103,7 +90,7 @@ func (d *Downloader) DownloadM3U8(ctx context.Context, modelName string, m3u8URL
 	}
 
 	if !isDiagnosis {
-		if err := d.saveFileHash(modelName, hashString, outputFile, fileType, postID); err != nil {
+		if err := d.database.SaveFile(modelName, hashString, outputFile, fileType, postID); err != nil {
 			return fmt.Errorf("error saving hash for M3U8 file: %w", err)
 		}
 	}
@@ -139,15 +126,8 @@ func fetchM3U8Playlist(m3u8URL string, cookies map[string]string) (string, error
 		return "", fmt.Errorf("error reading M3U8 playlist: %w", err)
 	}
 
-	// Check for errors during scanning
-	//if err := scanner.Err(); err != nil {
-	//	return "", fmt.Errorf("error reading M3U8 playlist: %w", err)
-	//}
+	return string(bodyBytes), nil
 
-	content := string(bodyBytes)
-	//log.Printf("Raw M3U8 content:\n%s", content)
-
-	return content, nil
 }
 
 func parseM3U8Playlist(content, m3u8URL string, cookies map[string]string) ([]string, error) {
@@ -258,7 +238,6 @@ func parseSegments(content, baseURL string) ([]string, error) {
 		}
 	}
 
-	//log.Printf("Found %d segment URLs", len(segmentURLs))
 	for i, url := range segmentURLs {
 		logger.Logger.Printf("Segment %d: %s", i, url)
 	}
@@ -272,8 +251,6 @@ func downloadSegments(ctx context.Context, segmentURLs []string, savePath string
 	errors := make(chan error, len(segmentURLs))
 
 	sem := semaphore.NewWeighted(3)
-
-	//log.Printf("Attempting to download %d segments", len(segmentURLs))
 
 	for i, segmentURL := range segmentURLs {
 		wg.Add(1)
@@ -323,7 +300,6 @@ func downloadSegments(ctx context.Context, segmentURLs []string, savePath string
 			}
 
 			segmentFiles[i] = fileName
-			//log.Printf("Successfully downloaded segment %d: %s", i, fileName)
 		}(i, segmentURL)
 	}
 
@@ -338,16 +314,11 @@ func downloadSegments(ctx context.Context, segmentURLs []string, savePath string
 	}
 
 	// Check if all segments were downloaded successfully
-	successfulDownloads := 0
 	for i, file := range segmentFiles {
 		if file == "" {
 			errs = append(errs, fmt.Errorf("segment %d failed to download", i))
-		} else {
-			successfulDownloads++
 		}
 	}
-
-	//log.Printf("Successfully downloaded %d out of %d segments", successfulDownloads, len(segmentURLs))
 
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("multiple errors occurred: %v", errs)

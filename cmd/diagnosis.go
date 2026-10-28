@@ -190,31 +190,6 @@ func (ds *DiagnosisSuite) testCreator() {
 	}
 }
 
-// This function is now self-contained for testing a post
-func isMediaDownloadable(media posts.AccountMedia) bool {
-	// Check the main media object for locations
-	if len(media.Media.Locations) > 0 {
-		return true
-	}
-	for _, variant := range media.Media.Variants {
-		if len(variant.Locations) > 0 {
-			return true
-		}
-	}
-	// If no main media, check the preview object
-	if media.Preview != nil {
-		if len(media.Preview.Locations) > 0 {
-			return true
-		}
-		for _, variant := range media.Preview.Variants {
-			if len(variant.Locations) > 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // Replace the old testPost function with this one.
 func (ds *DiagnosisSuite) testPost() {
 	ds.log(fmt.Sprintf("\n[5] Testing Post: %s", ds.flags.PostID))
@@ -248,11 +223,11 @@ func (ds *DiagnosisSuite) testPost() {
 			directAccessCount++
 		}
 		// Checks if a preview exists and has content
-		if m.Preview != nil && isMediaDownloadable(posts.AccountMedia{Media: *m.Preview}) {
+		if m.Preview != nil && m.Preview.HasLocations() {
 			previewAccessCount++
 		}
 		// Checks if anything at all can be downloaded (full content or preview)
-		if isMediaDownloadable(m) {
+		if m.HasLocations() {
 			downloadableCount++
 		}
 	}
@@ -278,12 +253,6 @@ func (ds *DiagnosisSuite) testDownload(post *posts.PostInfo, media []posts.Accou
 
 	// We'll pass a flag to the downloader to tell it to ignore the DB hash check
 	downloader, _ := download.NewDownloader(&diagConfig, IsFFmpegAvailable())
-
-	/*tempDir := filepath.Join(ds.cfg.Options.SaveLocation, fmt.Sprintf("temp-diagnosis-%s", time.Now().Format("20060102-150405")))
-	if err := os.MkdirAll(tempDir, os.ModePerm); err != nil {
-		ds.log(fmt.Sprintf(" - FAIL: Could not create temp dir for download test: %v", err))
-		return
-	}*/
 
 	tempDir, err := os.MkdirTemp("", "diagnosis-download-")
 	if err != nil {
@@ -313,7 +282,7 @@ func (ds *DiagnosisSuite) testDownload(post *posts.PostInfo, media []posts.Accou
 	ctx := context.Background()
 
 	for i, mediaItem := range media {
-		if isMediaDownloadable(mediaItem) {
+		if mediaItem.HasLocations() {
 			postForDownloader := posts.Post{
 				ID:        post.ID,
 				Content:   post.Content,
@@ -336,7 +305,7 @@ func (ds *DiagnosisSuite) testDownload(post *posts.PostInfo, media []posts.Accou
 func (ds *DiagnosisSuite) countDownloadable(media []posts.AccountMedia) int {
 	count := 0
 	for _, m := range media {
-		if isMediaDownloadable(m) {
+		if m.HasLocations() {
 			count++
 		}
 	}

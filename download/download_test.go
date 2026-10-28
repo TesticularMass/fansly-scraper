@@ -127,6 +127,8 @@ func TestApplyFileTimestamp(t *testing.T) {
 
 func TestEmptyOrphanNotAdopted(t *testing.T) {
 	tempDir := t.TempDir()
+	config.SetConfigPath(filepath.Join(tempDir, "config.toml"))
+	defer config.SetConfigPath("")
 	database, err := db.NewDatabase(tempDir)
 	if err != nil {
 		t.Fatal(err)
@@ -155,12 +157,15 @@ func TestEmptyOrphanNotAdopted(t *testing.T) {
 
 	post := posts.Post{ID: "123", CreatedAt: 1785342602}
 	item := posts.MediaItem{
-		ID:       "media1",
-		Mimetype: "image/jpeg",
+		ID:        "media1",
+		Mimetype:  "image/jpeg",
 		Locations: []posts.Location{{Location: "https://invalid.example.com/photo.jpg"}},
 	}
 
-	_ = d.downloadSingleItem(context.Background(), posts.AccountMedia{ID: "am1"}, item, baseDir, "model", false, post, 0, false)
+	// Cancel before transfer: this check needs no external server or retries.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = d.downloadSingleItem(ctx, posts.AccountMedia{ID: "am1"}, item, baseDir, "model", false, post, 0, false)
 
 	// 0-byte orphan should not have been adopted into DB
 	if database.FileExists(filePath) {

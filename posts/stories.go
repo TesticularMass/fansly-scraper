@@ -77,39 +77,11 @@ func GetModelStories(accountID string, fanslyHeaders *headers.FanslyHeaders) ([]
 func filterValidAccountMedia(accountMedia []AccountMedia) []AccountMedia {
 	var validMedia []AccountMedia
 	for _, media := range accountMedia {
-		if hasValidLocations(media) {
+		if media.HasLocations() {
 			validMedia = append(validMedia, media)
 		} else {
 			logger.Logger.Printf("[WARN] Skipping AccountMedia %s: No valid locations found", media.ID)
 		}
 	}
 	return validMedia
-}
-
-func hasValidLocations(media AccountMedia) bool {
-	// Check the main media item itself for locations
-	if len(media.Media.Locations) > 0 {
-		return true
-	}
-
-	// Check main media variants for locations
-	for _, variant := range media.Media.Variants {
-		if len(variant.Locations) > 0 {
-			return true
-		}
-	}
-
-	// Check preview media and its variants for locations, if it exists
-	if media.Preview != nil {
-		if len(media.Preview.Locations) > 0 {
-			return true
-		}
-		for _, variant := range media.Preview.Variants {
-			if len(variant.Locations) > 0 {
-				return true
-			}
-		}
-	}
-
-	return false
 }

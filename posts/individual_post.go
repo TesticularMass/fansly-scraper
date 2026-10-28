@@ -69,6 +69,24 @@ type AccountMedia struct {
 	Preview   *MediaItem `json:"preview,omitempty"`
 }
 
+// HasLocations reports whether the item or any variant has a download location.
+func (m MediaItem) HasLocations() bool {
+	if len(m.Locations) > 0 {
+		return true
+	}
+	for _, variant := range m.Variants {
+		if len(variant.Locations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// HasLocations includes preview-only content as well as the main media.
+func (m AccountMedia) HasLocations() bool {
+	return m.Media.HasLocations() || (m.Preview != nil && m.Preview.HasLocations())
+}
+
 // PostInfo struct to capture details from a single post API response
 type PostInfo struct {
 	ID          string `json:"id"`
@@ -378,7 +396,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 				return
 			}
 			fanslyHeaders.AddHeadersToRequest(req, true)
-	
+
 			client := utils.HTTPClient
 			resp, err := client.Do(req)
 			if err != nil {
@@ -389,7 +407,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 				return
 			}
 			defer resp.Body.Close()
-	
+
 			if resp.StatusCode != http.StatusOK {
 				logger.Logger.Printf("[WARN] Failed to fetch media by IDs with status code %d for batch", resp.StatusCode)
 				if firstErr == nil {
@@ -397,7 +415,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 				}
 				return
 			}
-	
+
 			var mediaResp AccountMediaResponse
 			if err := json.NewDecoder(resp.Body).Decode(&mediaResp); err != nil {
 				logger.Logger.Printf("[WARN] Failed to decode media response for batch: %v", err)
@@ -413,7 +431,7 @@ func GetMediaByIDs(ctx context.Context, mediaIDs []string, fanslyHeaders *header
 				}
 				return
 			}
-	
+
 			allFetchedMedia = append(allFetchedMedia, mediaResp.Response...)
 		}()
 	}
@@ -434,36 +452,7 @@ func filterMediaWithLocations(mediaItems []AccountMedia) []AccountMedia {
 	var filteredMedia []AccountMedia
 
 	for _, accountMedia := range mediaItems {
-		hasContent := false
-
-		// 1. Check for explicit download URLs on main media object or its variants
-		if len(accountMedia.Media.Locations) > 0 {
-			hasContent = true
-		}
-		if !hasContent {
-			for _, variant := range accountMedia.Media.Variants {
-				if len(variant.Locations) > 0 {
-					hasContent = true
-					break
-				}
-			}
-		}
-
-		// 2. As a fallback, check for URLs on the preview object or its variants.
-		// This is useful for content where only the preview is available (e.g., access: false).
-		if !hasContent && accountMedia.Preview != nil {
-			if len(accountMedia.Preview.Locations) > 0 {
-				hasContent = true
-			}
-			if !hasContent {
-				for _, variant := range accountMedia.Preview.Variants {
-					if len(variant.Locations) > 0 {
-						hasContent = true
-						break
-					}
-				}
-			}
-		}
+		hasContent := accountMedia.HasLocations()
 
 		// 3. Specifically check for streamable videos (HLS/DASH), as they may not have explicit `locations`.
 		// The download logic knows how to handle these manifest types.

@@ -69,6 +69,7 @@ func main() {
 	}
 
 	isCliMode := flags.Username != "" || flags.Monitor != "" || subcommand != "" || flags.PostID != ""
+	isCliMode = isCliMode || flags.Explore != ""
 
 	if flags.Version {
 		fmt.Printf("Fansly Scraper version %s\n", version)
@@ -131,6 +132,14 @@ func main() {
 	downloader, err := download.NewDownloader(cfg, ffmpegAvailable)
 	if err != nil {
 		logger.Logger.Fatal(err)
+	}
+
+	// Explore mode: discover premium-post previews by tag, optionally filtered
+	// to specific creators with -u. Runs before the username download path since
+	// here -u is a creator filter, not a download target.
+	if flags.Explore != "" {
+		runExploreMode(flags.Explore, flags.Username, flags.Limit, downloader)
+		return
 	}
 
 	if flags.DumpChatLog && flags.Username != "" {
@@ -242,6 +251,26 @@ func runDownloadPostMode(postIdentifier string, downloader *download.Downloader)
 		os.Exit(1)
 	}
 	fmt.Println("Post download complete.")
+}
+
+// runExploreMode downloads premium-post previews discovered via the Explore
+// feed for one or more tags, optionally limited to specific creators.
+func runExploreMode(exploreTags, usernameFilter string, limit int, downloader *download.Downloader) {
+	tags := parseUsernames(exploreTags)
+	var users []string
+	if usernameFilter != "" {
+		users = parseUsernames(usernameFilter)
+	}
+	if len(users) > 0 {
+		fmt.Printf("Exploring tag(s) %s, keeping creators: %s\n", strings.Join(tags, ", "), strings.Join(users, ", "))
+	} else {
+		fmt.Printf("Exploring tag(s): %s\n", strings.Join(tags, ", "))
+	}
+	if err := downloader.DownloadExplore(context.Background(), tags, users, limit); err != nil {
+		fmt.Printf("Error during explore: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Explore download complete.")
 }
 
 // Updated function signature to accept wallID

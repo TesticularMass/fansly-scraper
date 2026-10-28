@@ -27,6 +27,13 @@ func (m *MainModel) HandleCompletionUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursorPos = 0
 					return m, nil
 				}
+				if m.actionChosen == "explore" {
+					m.state = ExploreState
+					m.exploreInput.Reset()
+					m.exploreInput.Focus()
+					m.cursorPos = 0
+					return m, nil
+				}
 				m.state = FollowedModelsState
 				m.filteredModels = m.followedModels
 				m.filterInput = ""
@@ -55,6 +62,8 @@ func (m *MainModel) RenderCompletionMenu() string {
 		processAnotherText = "Download another user's posts"
 	case "download_individual_posts":
 		processAnotherText = "Download more individual posts"
+	case "explore":
+		processAnotherText = "Explore more premium previews"
 	case "download_purchases":
 		processAnotherText = "Download more purchased content"
 	case "monitor":

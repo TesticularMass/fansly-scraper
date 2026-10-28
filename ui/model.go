@@ -43,6 +43,7 @@ const (
 	DonateState
 	WallSelectionState
 	DownloadIndividualPostState
+	ExploreState
 )
 
 type MainModel struct {
@@ -87,6 +88,7 @@ type MainModel struct {
 	accountsFetched           bool
 	selectedWallID            string
 	postLinksInput            textinput.Model
+	exploreInput              textinput.Model
 	liveStatuses              map[string]bool // model ID -> live, cached for the monitor table
 	liveFetchInFlight         bool
 }
@@ -233,11 +235,15 @@ func NewMainModel(downloader *download.Downloader, version string, monitoringSer
 	postLinksInput.Placeholder = "Paste link(s) here (space or comma separated)"
 	postLinksInput.Focus()
 
+	exploreInput := textinput.New()
+	exploreInput.Placeholder = "tag(s), e.g. pregnant  (filter creators: pregnant @ user1,user2)"
+
 	return &MainModel{
 		version: version,
 		options: []string{
 			"Download a user's post",
 			"Download individual post(s)",
+			"Explore premium previews by tag",
 			"Download purchased content",
 			"Monitor a user's livestreams",
 			"Like all of a user's post",
@@ -261,6 +267,7 @@ func NewMainModel(downloader *download.Downloader, version string, monitoringSer
 		loadingDots:       0,
 		accountsFetched:   false,
 		postLinksInput:    postLinksInput,
+		exploreInput:      exploreInput,
 		liveStatuses:      make(map[string]bool),
 	}
 }

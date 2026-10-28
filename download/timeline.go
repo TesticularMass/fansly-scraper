@@ -256,6 +256,13 @@ func (d *Downloader) DownloadTimeline(ctx context.Context, modelId, modelName st
 
 func (d *Downloader) DownloadMediaItem(ctx context.Context, accountMedia posts.AccountMedia, baseDir, modelName string, contentSource any, index int, isDiagnosis ...bool) error {
 	diagMode := len(isDiagnosis) > 0 && isDiagnosis[0]
+	return d.downloadMediaItem(ctx, accountMedia, baseDir, modelName, contentSource, index, false, diagMode)
+}
+
+// downloadMediaItem is the shared implementation behind DownloadMediaItem.
+// forcePreview downloads the preview even when SkipPreviews is set in config,
+// which the Explore feature relies on since previews are the whole point there.
+func (d *Downloader) downloadMediaItem(ctx context.Context, accountMedia posts.AccountMedia, baseDir, modelName string, contentSource any, index int, forcePreview, diagMode bool) error {
 
 	hasValidLocations := func(item posts.MediaItem) bool {
 		if len(item.Locations) > 0 {
@@ -278,7 +285,7 @@ func (d *Downloader) DownloadMediaItem(ctx context.Context, accountMedia posts.A
 		}
 	}
 
-	if !d.cfg.Options.SkipPreviews && accountMedia.Preview != nil && hasValidLocations(*accountMedia.Preview) {
+	if (forcePreview || !d.cfg.Options.SkipPreviews) && accountMedia.Preview != nil && hasValidLocations(*accountMedia.Preview) {
 		// Use `contentSource` here as well
 		err := d.downloadSingleItem(ctx, accountMedia, *accountMedia.Preview, baseDir, modelName, true, contentSource, index, diagMode)
 		if err != nil {

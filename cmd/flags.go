@@ -24,6 +24,7 @@ type Flags struct {
 	Limit          int
 	Profile        string
 	ConfigPath     string
+	Explore        string
 }
 
 type DiagnosisFlags struct {
@@ -56,6 +57,9 @@ func ParseFlags() (Flags, string) {
 	flag.IntVar(&flags.Limit, "limit", 0, "Limit download to the x most recent items")
 
 	flag.BoolVar(&flags.DumpChatLog, "dump-chat-log", false, "Export text chat history to a JSON file")
+
+	flag.StringVar(&flags.Explore, "e", "", "Explore tag(s) to download premium previews from (comma-separated)")
+	flag.StringVar(&flags.Explore, "explore", "", "Explore tag(s) to download premium previews from (comma-separated)")
 
 	flag.BoolVar(&flags.Version, "v", false, "Display version information")
 	flag.BoolVar(&flags.Version, "version", false, "Display version information")
@@ -114,6 +118,8 @@ func customUsage() {
 	fmt.Fprintf(os.Stderr, "  -p, --post <id|url>       Download a specific post by ID or URL.\n")
 	fmt.Fprintf(os.Stderr, "  -l, --limit <num>         Limit download to the x most recent items.\n")
 	fmt.Fprintf(os.Stderr, "      --dump-chat-log       Export text chat history to a JSON file (requires -u).\n\n")
+	fmt.Fprintf(os.Stderr, "  -e, --explore <tag>       Explore a tag and download premium post previews (comma-separated tags).\n")
+	fmt.Fprintf(os.Stderr, "                            Combine with -u to keep only matching creators, -l to cap items.\n\n")
 
 	// Operational Options
 	fmt.Fprintf(os.Stderr, "Operational Options:\n")
@@ -153,6 +159,9 @@ func customUsage() {
 
 	fmt.Fprintf(os.Stderr, "  # Download a single post:\n")
 	fmt.Fprintf(os.Stderr, "  %s -p 837364635748286464\n\n", appName)
+
+	fmt.Fprintf(os.Stderr, "  # Explore a tag and download premium previews (optionally filter by creator):\n")
+	fmt.Fprintf(os.Stderr, "  %s -e pregnant -u testuser\n\n", appName)
 
 	fmt.Fprintf(os.Stderr, "  # Toggle monitoring for a user:\n")
 	fmt.Fprintf(os.Stderr, "  %s -m username\n", appName)

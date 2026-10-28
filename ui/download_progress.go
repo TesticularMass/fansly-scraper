@@ -44,6 +44,8 @@ func (m *MainModel) RenderDownloadProgressMenu() string {
 
 	if m.actionChosen == "download_individual_posts" {
 		sb.WriteString("Downloading individual post(s)...\n\n")
+	} else if m.actionChosen == "explore" {
+		sb.WriteString("Exploring and downloading premium previews...\n\n")
 	} else {
 		sb.WriteString(fmt.Sprintf("Downloading %s content for %s...\n\n", m.selectedOption, m.selectedModel))
 	}

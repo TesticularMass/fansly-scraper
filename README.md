@@ -69,6 +69,15 @@ Replace `creator`, IDs, and paths with your own values.
 # Override the configured post limit
 ./fansly-scraper -u creator -l 10
 
+# Explore a tag and download premium post previews
+./fansly-scraper -e pregnant
+
+# Explore a tag but keep only specific creators (comma-separated)
+./fansly-scraper -e pregnant -u testuser
+
+# Explore multiple tags and cap the number of downloaded previews
+./fansly-scraper -e "pregnant,maternity" -l 20
+
 # Export text chat history to JSON
 ./fansly-scraper -u creator1,creator2 --dump-chat-log
 
@@ -82,6 +91,8 @@ Replace `creator`, IDs, and paths with your own values.
 ```
 
 `-d all` includes timeline, messages, and stories, plus profile images when enabled in configuration. Purchased content has a separate interactive menu option. Place flags before subcommands such as `monitor`.
+
+The `-e`/`--explore` flag uses Fansly's Explore (content discovery) feed to download the free preview media of premium posts tagged with the given tag(s). Combine it with `-u` to keep only matching creators and `-l` to cap how many previews are downloaded. Files are saved under `<creator>/explore/`. Previews are fetched even when `skip_previews` is enabled in the config, since previews are the point of this mode. Explore results come from a rotating, de-duplicated feed, so a run returns whatever the feed currently surfaces rather than every historical post for a tag; a creator filter scans a bounded window of that feed.
 
 ### Livestream monitoring
 

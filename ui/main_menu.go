@@ -70,6 +70,12 @@ func (m *MainModel) handleMainMenuSelection() (tea.Model, tea.Cmd) {
 		m.postLinksInput.Reset()
 		m.postLinksInput.Focus()
 		return m, nil
+	case "Explore premium previews by tag":
+		m.actionChosen = "explore"
+		m.state = ExploreState
+		m.exploreInput.Reset()
+		m.exploreInput.Focus()
+		return m, nil
 	case "Download purchased content":
 		m.actionChosen = "download_purchases"
 		m.state = DownloadPurchasedState

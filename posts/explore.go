@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,18 +29,32 @@ type ExploreTag struct {
 	ViewCount int    `json:"viewCount"`
 }
 
+// SuggestionTag is a hashtag attached to an Explore suggestion.
+type SuggestionTag struct {
+	ID  string `json:"id"`
+	Tag string `json:"tag"`
+}
+
 // MediaOfferSuggestion is a single entry from the Explore feed. Its AccountID
 // is the requesting (viewer) account, not the creator; the creator is only
 // known after resolving MediaOfferID into an AccountMedia (see GetMediaByIDs),
 // whose AccountId field identifies the content owner.
 type MediaOfferSuggestion struct {
-	ID                 string `json:"id"`
-	AccountID          string `json:"accountId"`
-	MediaOfferID       string `json:"mediaOfferId"`
-	MediaOfferBundleID string `json:"mediaOfferBundleId"`
-	MediaID            string `json:"mediaId"`
-	PreviewID          string `json:"previewId"`
-	MediaType          int    `json:"mediaType"`
+	ID                 string          `json:"id"`
+	AccountID          string          `json:"accountId"`
+	MediaOfferID       string          `json:"mediaOfferId"`
+	MediaOfferBundleID string          `json:"mediaOfferBundleId"`
+	MediaID            string          `json:"mediaId"`
+	PreviewID          string          `json:"previewId"`
+	MediaType          int             `json:"mediaType"`
+	Tags               []SuggestionTag `json:"tags"`
+	PostTags           []SuggestionTag `json:"postTags"`
+}
+
+// hasAnyTag reports whether the suggestion carries one of the given tag IDs.
+func (s MediaOfferSuggestion) hasAnyTag(tagIDs []string) bool {
+	matches := func(t SuggestionTag) bool { return slices.Contains(tagIDs, t.ID) }
+	return slices.ContainsFunc(s.PostTags, matches) || slices.ContainsFunc(s.Tags, matches)
 }
 
 type tagResolveResponse struct {
@@ -95,23 +110,27 @@ func ResolveExploreTag(ctx context.Context, tag string, fanslyHeaders *headers.F
 	return decoded.Response.MediaOfferSuggestionTag, nil
 }
 
-// GetTagSuggestionsBatch fetches one rotating batch of Explore suggestions for
-// the given tag IDs. The feed de-duplicates server-side, so repeated calls
-// return different (and eventually empty) batches.
-func GetTagSuggestionsBatch(ctx context.Context, tagIDs []string, limit int, fanslyHeaders *headers.FanslyHeaders) ([]MediaOfferSuggestion, error) {
+// GetTagSuggestionsBatch fetches one page of the tag's Explore feed, the same
+// request the web app makes on /explore/tag/<tag>. after is the ID of the last
+// suggestion from the previous page ("0" for the first page). An empty result
+// usually means the request was throttled, not that the feed has ended.
+func GetTagSuggestionsBatch(ctx context.Context, tagIDs []string, after string, limit int, fanslyHeaders *headers.FanslyHeaders) ([]MediaOfferSuggestion, error) {
 	if len(tagIDs) == 0 {
 		return nil, fmt.Errorf("no tag IDs provided")
 	}
 	if limit <= 0 {
 		limit = 25
 	}
+	if after == "" {
+		after = "0"
+	}
 
 	if err := exploreLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter error: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://apiv3.fansly.com/api/v1/contentdiscovery/media/suggestionsnew?tagIds=%s&limit=%d&ngsw-bypass=true",
-		strings.Join(tagIDs, ","), limit)
+	reqURL := fmt.Sprintf("https://apiv3.fansly.com/api/v1/contentdiscovery/media/suggestionsnew?before=0&after=%s&tagIds=%s&limit=%d&offset=0&ngsw-bypass=true",
+		url.QueryEscape(after), strings.Join(tagIDs, ","), limit)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -135,39 +154,67 @@ func GetTagSuggestionsBatch(ctx context.Context, tagIDs []string, limit int, fan
 	return decoded.Response.MediaOfferSuggestions, nil
 }
 
-// CollectTagOffers polls the rotating Explore feed for the given tag IDs,
+// CollectTagOffers pages through the Explore feed for the given tag IDs,
 // accumulating distinct media offers until it reaches maxOffers or the feed
 // stops yielding new items. maxOffers <= 0 collects until the feed is drained.
 // progress, when non-nil, is called with the running count of distinct offers.
+//
+// Fansly throttles this feed by answering with empty pages, sometimes for
+// several minutes at a time, and a throttled page looks the same as the end of
+// the feed. An empty page is therefore retried until emptyPatience has passed
+// before the feed is treated as finished.
 func CollectTagOffers(ctx context.Context, tagIDs []string, maxOffers int, fanslyHeaders *headers.FanslyHeaders, progress func(found int)) ([]MediaOfferSuggestion, error) {
 	const (
-		maxEmptyRounds = 3    // consecutive rounds with no new offers before stopping
-		safetyCap      = 1000 // hard ceiling so a deep feed can't loop forever
+		pageSize       = 25
+		emptyRetryWait = 15 * time.Second // pause before retrying an empty page
+		emptyPatience  = 5 * time.Minute  // retry an empty page this long before giving up
+		maxStalePages  = 3                // pages with nothing new before giving up
+		safetyCap      = 1000             // hard ceiling so a deep feed can't loop forever
 	)
 
 	seen := make(map[string]bool)
 	var collected []MediaOfferSuggestion
-	emptyRounds := 0
+	after := "0"
+	var emptySince time.Time
+	stalePages := 0
 	var lastErr error
 
-	for {
+	for len(collected) < safetyCap {
 		if err := ctx.Err(); err != nil {
 			return collected, err
 		}
 
-		batch, err := GetTagSuggestionsBatch(ctx, tagIDs, 25, fanslyHeaders)
+		batch, err := GetTagSuggestionsBatch(ctx, tagIDs, after, pageSize, fanslyHeaders)
 		if err != nil {
 			lastErr = err
 			logger.Logger.Printf("[WARN] Explore batch failed: %v", err)
-			emptyRounds++
-			if emptyRounds >= maxEmptyRounds {
+		}
+		if len(batch) == 0 {
+			if emptySince.IsZero() {
+				emptySince = time.Now()
+			}
+			if time.Since(emptySince) >= emptyPatience {
+				logger.Logger.Printf("[INFO] Explore: no data for %s, treating the feed as finished", emptyPatience)
 				break
+			}
+			logger.Logger.Printf("[INFO] Explore: empty page (likely throttled), retrying in %s", emptyRetryWait)
+			select {
+			case <-ctx.Done():
+				return collected, ctx.Err()
+			case <-time.After(emptyRetryWait):
 			}
 			continue
 		}
+		emptySince = time.Time{}
+		after = batch[len(batch)-1].ID
 
 		added := 0
 		for _, s := range batch {
+			// The tag feed is filtered server-side; this guards against
+			// unrelated recommendations ever reaching the download step.
+			if !s.hasAnyTag(tagIDs) {
+				continue
+			}
 			key := s.MediaOfferID
 			if key == "" {
 				key = s.ID
@@ -187,16 +234,17 @@ func CollectTagOffers(ctx context.Context, tagIDs []string, maxOffers int, fansl
 		}
 
 		if added == 0 {
-			emptyRounds++
-		} else {
-			emptyRounds = 0
-			if progress != nil {
-				progress(len(collected))
+			// Pages with nothing new count toward giving up, so a feed that
+			// repeats itself or stops matching the tag can't loop forever.
+			stalePages++
+			if stalePages >= maxStalePages {
+				break
 			}
+			continue
 		}
-
-		if emptyRounds >= maxEmptyRounds || len(collected) >= safetyCap {
-			break
+		stalePages = 0
+		if progress != nil {
+			progress(len(collected))
 		}
 	}
 

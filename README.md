@@ -92,7 +92,7 @@ Replace `creator`, IDs, and paths with your own values.
 
 `-d all` includes timeline, messages, and stories, plus profile images when enabled in configuration. Purchased content has a separate interactive menu option. Place flags before subcommands such as `monitor`.
 
-The `-e`/`--explore` flag uses Fansly's Explore (content discovery) feed to download the free preview media of premium posts tagged with the given tag(s). Combine it with `-u` to keep only matching creators and `-l` to cap how many previews are downloaded. Files are saved under `<creator>/explore/`. Previews are fetched even when `skip_previews` is enabled in the config, since previews are the point of this mode. Explore results come from a rotating, de-duplicated feed, so a run returns whatever the feed currently surfaces rather than every historical post for a tag; a creator filter scans a bounded window of that feed.
+The `-e`/`--explore` flag uses Fansly's Explore (content discovery) feed to download the free preview media of premium posts tagged with the given tag(s). Combine it with `-u` to keep only matching creators and `-l` to cap how many previews are downloaded. Files are saved under `<creator>/explore/`. Previews are fetched even when `skip_previews` is enabled in the config, since previews are the point of this mode. Explore results come from the same feed as a tag's page on fansly.com/explore, which surfaces a limited set of recent posts rather than every historical post for a tag, so a creator filter only finds posts that are currently in that feed. Fansly throttles this feed by returning empty pages, sometimes for several minutes, so a run retries an empty page for up to five minutes before deciding the feed has ended.
 
 ### Livestream monitoring
 

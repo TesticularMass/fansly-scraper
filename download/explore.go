@@ -17,7 +17,7 @@ import (
 )
 
 // exploreFilterScanWindow bounds how many offers a creator-filtered explore
-// run will pull from the rotating feed. A suggestion does not reveal its
+// run will pull from the tag feed. A suggestion does not reveal its
 // creator until its media is resolved, so the feed can't be filtered as it is
 // read; scanning a bounded window keeps filtered runs from draining the whole
 // (potentially large) feed.
@@ -32,7 +32,7 @@ func (d *Downloader) PostLimit() int {
 // by tag and downloads their preview media (plus full media where the account
 // already has access). When usernames is non-empty, only offers whose creator
 // matches one of those usernames are kept. maxItems caps the number of media
-// items downloaded; maxItems <= 0 drains the rotating feed.
+// items downloaded; maxItems <= 0 drains the tag feed.
 func (d *Downloader) DownloadExplore(ctx context.Context, tags []string, usernames []string, maxItems int) error {
 	if _, err := auth.Login(d.headers); err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
@@ -76,7 +76,7 @@ func (d *Downloader) DownloadExplore(ctx context.Context, tags []string, usernam
 	}
 
 	// Without a user filter we can stop once we have maxItems offers; with a
-	// filter we must scan the whole rotating feed since it is not filterable
+	// filter we must scan the whole tag feed since it is not filterable
 	// server-side.
 	collectCap := maxItems
 	if filterSet != nil {
@@ -88,9 +88,10 @@ func (d *Downloader) DownloadExplore(ctx context.Context, tags []string, usernam
 		}
 		fmt.Printf("Scanning up to %d previews for matching creator(s)...\n", collectCap)
 	}
-	fmt.Printf("Exploring #%s ...\n", strings.Join(tagLabels, ", #"))
+	fmt.Printf("Exploring #%s (Fansly throttles this feed, so this can take a few minutes)...\n", strings.Join(tagLabels, ", #"))
 	offers, err := posts.CollectTagOffers(ctx, tagIDs, collectCap, d.headers, func(found int) {
 		logger.Logger.Printf("[INFO] Explore: collected %d offers so far", found)
+		fmt.Printf("Found %d tagged previews so far...\n", found)
 	})
 	if err != nil && len(offers) == 0 {
 		return fmt.Errorf("explore discovery failed: %w", err)
